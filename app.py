@@ -1,6 +1,7 @@
 
 import streamlit as st
 import pandas as pd
+import altair as alt
 from datetime import date
 from supabase import create_client, Client
 
@@ -261,6 +262,34 @@ def stat_card(icon_name, badge, label, value, delta_text=None, delta_kind="flat"
             f'<span class="badge badge-{badge}">{icon(icon_name,16)}</span></div>'
             f'<div class="num">{value}</div>{delta_html}</div>')
 
+def trend_kind(delta, lower_is_better=True):
+    """Sin cambio = neutro. Evita pintar de verde un 0.0 como si fuera progreso."""
+    if delta is None: return "flat"
+    if abs(delta) < 0.05: return "flat"
+    mejora = delta < 0 if lower_is_better else delta > 0
+    return "good" if mejora else "bad"
+
+def trend_chart(df, y, titulo, color="#E4362F", fmt=".1f", height=300):
+    """Línea con eje ajustado a los datos. st.line_chart fuerza el 0 en el eje,
+    lo que aplana por completo cambios pequeños (ej. 87 -> 84.9 kg)."""
+    lo, hi = float(df[y].min()), float(df[y].max())
+    pad = max((hi - lo) * 0.25, 0.5)
+    base = alt.Chart(df).encode(
+        x=alt.X("week:Q", title="Semana",
+                axis=alt.Axis(tickMinStep=1, format="d", grid=False)),
+        y=alt.Y(f"{y}:Q", title=titulo,
+                scale=alt.Scale(domain=[lo - pad, hi + pad], nice=False)),
+        tooltip=[alt.Tooltip("week:Q", title="Semana", format="d"),
+                 alt.Tooltip(f"{y}:Q", title=titulo, format=fmt)],
+    )
+    linea = base.mark_line(color=color, strokeWidth=2.5,
+                           point=alt.OverlayMarkDef(color=color, size=60))
+    return (linea.properties(height=height)
+            .configure_axis(labelColor="#93A0B4", titleColor="#5B6B84",
+                            gridColor="rgba(241,245,249,.09)",
+                            domainColor="rgba(241,245,249,.16)", labelFontSize=12)
+            .configure_view(strokeWidth=0))
+
 def goal_bar(current, target, unit="rondas", done_label="Objetivo conseguido"):
     pct = 0 if target <= 0 else max(0, min(100, round(current/target*100)))
     done = current >= target and target > 0
@@ -325,19 +354,23 @@ if page == "home":
         a,b,c,d=st.columns(4)
         with a:
             st.markdown(stat_card("scale","red","Peso",f"{weight:.1f} kg",
-                        f"{dw:+.1f} kg desde inicio", "good" if dw<=0 else "bad"), unsafe_allow_html=True)
+                        f"{dw:+.1f} kg desde inicio", trend_kind(dw)), unsafe_allow_html=True)
         with b:
             if waist_now is not None:
                 dwa = waist_now - float(profile["start_waist"]) if profile.get("start_waist") else None
                 dtext = f"{dwa:+.1f} cm desde inicio" if dwa is not None else "última medición"
-                kind = "good" if (dwa is not None and dwa<=0) else ("flat" if dwa is None else "bad")
+                kind = trend_kind(dwa)
                 st.markdown(stat_card("ruler","blue","Cintura",f"{waist_now:.1f} cm", dtext, kind), unsafe_allow_html=True)
             else:
                 st.markdown(stat_card("ruler","blue","Cintura","—", "Añade tu medida", "flat"), unsafe_allow_html=True)
         with c:
             st.markdown(stat_card("dumbbell","green","Dominadas",str(profile["start_pullups"]), "marca inicial", "flat"), unsafe_allow_html=True)
         with d:
-            st.markdown(stat_card("calendar","amber","Semana", f"{week_now} / 16", f"{round(week_now/16*100)}% completado", "flat"), unsafe_allow_html=True)
+            # Progreso real = sesiones registradas, no tiempo transcurrido.
+            hechas = len(logs)
+            total_sesiones = 16 * len(DAYS)
+            sub = f"{hechas} de {total_sesiones} sesiones" if hechas else "sin sesiones aún"
+            st.markdown(stat_card("calendar","amber","Semana", f"{week_now} / 16", sub, "flat"), unsafe_allow_html=True)
         st.write("")
         d_info = DAYS[day_now]
         st.markdown(f'<div class="session-card"><div class="eyebrow" style="color:var(--red);text-transform:uppercase;letter-spacing:.12em;font-size:.72rem;font-weight:800">'
@@ -402,7 +435,8 @@ elif page == "progress":
             with f1: log_week=st.selectbox("Semana",range(1,17),index=week_now-1,key="bw_week")
             with f2: log_date=st.date_input("Fecha",date.today(),key="bw_date")
             with f3: log_weight=st.number_input("Peso (kg)",30.0,250.0,float(profile["start_weight"]),0.1,key="bw_weight")
-            with f4: log_waist=st.number_input("Cintura (cm)",40.0,180.0,float(profile["start_waist"]) if profile.get("start_waist") else 90.0,0.1,key="bw_waist")
+            with f4: log_waist=st.number_input("Cintura (cm)",40.0,180.0,value=None,step=0.1,key="bw_waist",
+                                               placeholder="opcional", help="Déjalo vacío si hoy no te has medido.")
             if st.button("Guardar medición", type="primary", use_container_width=True):
                 if DB_OK:
                     supabase.table("body_logs").insert({"log_date":str(log_date),"week":log_week,"weight":log_weight,"waist":log_waist}).execute()
@@ -416,25 +450,25 @@ elif page == "progress":
             waist=body["waist"].dropna(); cw=float(waist.iloc[-1]) if len(waist) else None
             a,b=st.columns(2)
             with a: st.markdown(stat_card("scale","red","Peso",f"{current:.1f} kg",
-                        f"{delta:+.1f} kg vs inicio","good" if delta<=0 else "bad"), unsafe_allow_html=True)
+                        f"{delta:+.1f} kg vs inicio", trend_kind(delta)), unsafe_allow_html=True)
             with b:
                 dwa = (cw - float(profile["start_waist"])) if (cw and profile.get("start_waist")) else None
                 st.markdown(stat_card("ruler","blue","Cintura", f"{cw:.1f} cm" if cw else "—",
                             f"{dwa:+.1f} cm vs inicio" if dwa is not None else "última medición",
-                            "good" if (dwa is not None and dwa<=0) else ("flat" if dwa is None else "bad")), unsafe_allow_html=True)
+                            trend_kind(dwa)), unsafe_allow_html=True)
             c,d=st.columns(2)
             with c: st.markdown(stat_card("dumbbell","green","Dominadas",f"{profile['start_pullups']}","Semana 0","flat"), unsafe_allow_html=True)
             with d: st.markdown(stat_card("activity","amber","Flexiones",f"{profile['start_pushups']}","Semana 0","flat"), unsafe_allow_html=True)
             st.markdown(f'### {icon("scale",20)} Peso', unsafe_allow_html=True)
             weekly=body.groupby("week",as_index=False)["weight"].mean()
-            chart=pd.concat([pd.DataFrame({"week":[0],"weight":[profile["start_weight"]]}),weekly],ignore_index=True).drop_duplicates("week",keep="last").sort_values("week").set_index("week")
-            st.line_chart(chart["weight"],height=300)
+            chart=pd.concat([pd.DataFrame({"week":[0],"weight":[float(profile["start_weight"])]}),weekly],ignore_index=True).drop_duplicates("week",keep="last").sort_values("week")
+            st.altair_chart(trend_chart(chart,"weight","Peso (kg)","#E4362F"),use_container_width=True)
             if profile.get("start_waist"):
                 wd=body.dropna(subset=["waist"]).groupby("week",as_index=False)["waist"].last()
                 if len(wd):
                     st.markdown(f'### {icon("ruler",20)} Cintura', unsafe_allow_html=True)
-                    chart2=pd.concat([pd.DataFrame({"week":[0],"waist":[profile["start_waist"]]}),wd],ignore_index=True).drop_duplicates("week",keep="last").sort_values("week").set_index("week")
-                    st.line_chart(chart2["waist"],height=300)
+                    chart2=pd.concat([pd.DataFrame({"week":[0],"waist":[float(profile["start_waist"])]}),wd],ignore_index=True).drop_duplicates("week",keep="last").sort_values("week")
+                    st.altair_chart(trend_chart(chart2,"waist","Cintura (cm)","#3E68F0"),use_container_width=True)
         else:
             empty_state("scale", "Todavía no hay mediciones corporales. Registra la primera arriba.")
         if len(logs):
@@ -442,12 +476,36 @@ elif page == "progress":
             for lift in logs["lift"].dropna().unique():
                 q=logs[logs["lift"]==lift].copy(); q["weight"]=pd.to_numeric(q["weight"],errors="coerce"); q=q.dropna(subset=["weight"]).groupby("week",as_index=False)["weight"].max()
                 if len(q):
-                    st.write(f"**{lift}**"); st.line_chart(q.set_index("week")["weight"],height=180)
+                    st.write(f"**{lift}**")
+                    st.altair_chart(trend_chart(q,"weight","kg","#22C55E",height=180),use_container_width=True)
             st.markdown(f'### {icon("flame",20)} AMRAP', unsafe_allow_html=True)
+            # Barras AGRUPADAS por día: apilarlas sumaría rondas de sesiones distintas,
+            # y esa suma no significa nada.
             q=logs.groupby(["week","day"],as_index=False)["rounds"].max()
-            st.bar_chart(q.pivot(index="week",columns="day",values="rounds").fillna(0),height=280)
+            amrap=(alt.Chart(q).mark_bar(cornerRadiusTopLeft=3,cornerRadiusTopRight=3)
+                   .encode(
+                       x=alt.X("week:O", title="Semana", axis=alt.Axis(labelAngle=0)),
+                       xOffset=alt.XOffset("day:N", sort=DAY_ORDER),
+                       y=alt.Y("rounds:Q", title="Rondas"),
+                       color=alt.Color("day:N", title="Día", sort=DAY_ORDER,
+                                       scale=alt.Scale(domain=DAY_ORDER,
+                                                       range=["#E4362F","#3E68F0","#22C55E","#F59E0B"])),
+                       tooltip=[alt.Tooltip("week:O",title="Semana"),alt.Tooltip("day:N",title="Día"),
+                                alt.Tooltip("rounds:Q",title="Rondas")])
+                   .properties(height=280)
+                   .configure_axis(labelColor="#93A0B4",titleColor="#5B6B84",
+                                   gridColor="rgba(241,245,249,.09)",
+                                   domainColor="rgba(241,245,249,.16)",labelFontSize=12)
+                   .configure_legend(labelColor="#93A0B4",titleColor="#5B6B84")
+                   .configure_view(strokeWidth=0))
+            st.altair_chart(amrap,use_container_width=True)
             st.markdown(f'### {icon("activity",20)} Historial', unsafe_allow_html=True)
-            st.dataframe(logs.sort_values(["week","log_date"],ascending=[False,False]),use_container_width=True,hide_index=True)
+            hist=(logs.sort_values(["week","log_date"],ascending=[False,False])
+                      .drop(columns=[c for c in ("id",) if c in logs.columns])
+                      .rename(columns={"log_date":"Fecha","week":"Semana","day":"Día","lift":"Ejercicio",
+                                       "weight":"Peso (kg)","sets_reps":"Series/reps","rir":"RIR",
+                                       "rounds":"Rondas","extra_reps":"Reps extra","notes":"Notas"}))
+            st.dataframe(hist,use_container_width=True,hide_index=True)
         else:
             empty_state("activity", "Todavía no hay entrenamientos registrados.")
 
