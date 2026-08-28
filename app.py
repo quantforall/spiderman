@@ -8,7 +8,7 @@ st.set_page_config(
     page_title="Q4A Trainer",
     page_icon="🕷️",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="auto",  # colapsado en móvil, abierto en escritorio
 )
 
 # ============================================================
@@ -186,17 +186,21 @@ h1,h2,h3{ font-family:'Barlow Condensed',Inter,sans-serif; letter-spacing:-.01em
   .hero{ padding:22px 18px; border-radius:var(--r-lg); }
   .hero h1{ font-size:2rem; }
   .hero p{ font-size:.96rem; }
-  .stat{ padding:16px 16px; }
+  .stat{ padding:18px 16px; }
   .card, .session-card{ padding:18px 16px; }
+  .stat{ height:auto; }
 }
+/* Streamlit pone margin-bottom:-1rem en stMarkdownContainer (pensado para párrafos).
+   En nuestras tarjetas HTML ese margen negativo se come la separación y las pega. */
+[data-testid="stMarkdownContainer"]:has(> .stat){ margin-bottom:0 !important; }
 
 /* ---------- cards & stats ---------- */
 .card{ border:1px solid var(--border); border-radius:var(--r-lg); padding:22px 24px; background:var(--surface); }
 .card .eyebrow{ text-transform:uppercase; letter-spacing:.12em; font-size:.7rem; font-weight:800; color:var(--ink-faint); }
-.stat{ border:1px solid var(--border); border-radius:var(--r-lg); padding:18px 20px; background:var(--surface); display:flex; flex-direction:column; gap:10px; height:100%; }
-.stat .top{ display:flex; align-items:center; justify-content:space-between; }
+.stat{ border:1px solid var(--border); border-radius:var(--r-lg); padding:18px 20px; background:var(--surface); display:flex; flex-direction:column; gap:6px; height:100%; }
+.stat .top{ display:flex; align-items:center; justify-content:space-between; min-height:26px; }
 .stat .label{ font-size:.8rem; text-transform:uppercase; letter-spacing:.08em; color:var(--ink-faint); font-weight:700; white-space:nowrap; }
-.stat .badge{ width:30px; height:30px; border-radius:9px; display:flex; align-items:center; justify-content:center; flex:none; }
+.stat .badge{ width:26px; height:26px; border-radius:8px; display:flex; align-items:center; justify-content:center; flex:none; }
 .stat .num{ font-family:'Barlow Condensed',sans-serif; font-size:1.75rem; font-weight:800; letter-spacing:-.02em; color:var(--ink); font-variant-numeric:tabular-nums; line-height:1.2; white-space:nowrap; }
 .stat .delta{ display:inline-flex; align-items:center; gap:5px; font-size:.83rem; font-weight:600; width:fit-content; }
 .badge-red{ background:var(--red-soft); color:var(--red); } .badge-blue{ background:var(--blue-soft); color:var(--blue); }
@@ -356,7 +360,6 @@ elif page == "training":
     st.markdown(f'<span class="pill pill-red">{d["focus"]}</span> <span class="pill">16 semanas</span>',unsafe_allow_html=True)
     st.write("")
     st.markdown(stat_card("dumbbell","red","Ejercicio", d["lift"]), unsafe_allow_html=True)
-    st.write("")
     c2,c3=st.columns(2)
     with c2: st.markdown(stat_card("activity","blue","Trabajo", d["sets"][week]), unsafe_allow_html=True)
     with c3: st.markdown(stat_card("flame","green","AMRAP", f'{d["time"]} min'), unsafe_allow_html=True)
@@ -419,7 +422,6 @@ elif page == "progress":
                 st.markdown(stat_card("ruler","blue","Cintura", f"{cw:.1f} cm" if cw else "—",
                             f"{dwa:+.1f} cm vs inicio" if dwa is not None else "última medición",
                             "good" if (dwa is not None and dwa<=0) else ("flat" if dwa is None else "bad")), unsafe_allow_html=True)
-            st.write("")
             c,d=st.columns(2)
             with c: st.markdown(stat_card("dumbbell","green","Dominadas",f"{profile['start_pullups']}","Semana 0","flat"), unsafe_allow_html=True)
             with d: st.markdown(stat_card("activity","amber","Flexiones",f"{profile['start_pushups']}","Semana 0","flat"), unsafe_allow_html=True)
