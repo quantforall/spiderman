@@ -76,8 +76,7 @@ DAYS = {
 }
 MIN = {1:8,2:8,3:9,4:9,5:9,6:9,7:10,8:10,9:10,10:10,11:11,12:11,13:10,14:11,15:12,16:0}
 
-# Weekday index (Mon=0 … Sun=6) → training day, in program order
-WEEKDAY_MAP = {0:"Lunes", 1:"Martes", 3:"Jueves", 5:"Sábado"}
+# Las 4 sesiones semanales, en orden. La base de datos las guarda por nombre de día.
 DAY_ORDER = ["Lunes","Martes","Jueves","Sábado"]
 # En la interfaz las sesiones se llaman "Workout 1..4"; en la base de datos se
 # siguen guardando por nombre de día (columna `day`), así que no hay migración.
@@ -93,13 +92,20 @@ def current_week(start_date_str):
     if delta < 0: return 1
     return min(16, delta // 7 + 1)
 
-def next_session(today=None):
-    """Próximo día de entrenamiento a partir de hoy (o el mismo día si toca hoy)."""
-    wd = (today or date.today()).weekday()
-    for w in sorted(WEEKDAY_MAP):
-        if w >= wd:
-            return WEEKDAY_MAP[w]
-    return WEEKDAY_MAP[min(WEEKDAY_MAP)]
+def next_pending(logs):
+    """Siguiente sesión pendiente siguiendo el orden del programa:
+    semana 1 → Workout 1,2,3,4; semana 2 → Workout 1,2,3,4; etc.
+    Se basa en lo que has registrado, NO en el día de la semana de hoy."""
+    hechas = set()
+    if logs is not None and len(logs):
+        for _, r in logs.iterrows():
+            if r.get("day") in DAY_ORDER and pd.notna(r.get("week")):
+                hechas.add((int(r["week"]), DAY_ORDER.index(r["day"])))
+    for w in range(1, 17):
+        for i in range(len(DAY_ORDER)):
+            if (w, i) not in hechas:
+                return w, i
+    return 16, len(DAY_ORDER) - 1   # programa completo
 
 # ============================================================
 # ICONS (inline SVG, stroke-based — no emoji as functional icons)
@@ -315,8 +321,10 @@ NAV = [
 ]
 
 profile = profile_get()
-week_now = current_week(profile["start_date"]) if profile else 1
-day_now = next_session()
+week_now = current_week(profile["start_date"]) if profile else 1   # semana de calendario
+# Sesión pendiente según lo entrenado (no según el día de hoy).
+logs_all = training_get()
+pend_week, pend_wk = next_pending(logs_all)
 
 if "nav_page" not in st.session_state:
     st.session_state.nav_page = "home"
@@ -351,7 +359,7 @@ if page == "home":
                 f'<p>Una experiencia simple para entrenar duro, medir mejor y ver cómo cambias.</p></div>',
                 unsafe_allow_html=True)
     st.write("")
-    body=body_get(); logs=training_get()
+    body=body_get(); logs=logs_all
     if profile:
         weight=float(body.iloc[-1]["weight"]) if len(body) else float(profile["start_weight"])
         dw=weight-float(profile["start_weight"])
@@ -378,11 +386,12 @@ if page == "home":
             st.markdown(stat_card("check-circle","amber","Sesiones", f"{hechas} / {total_sesiones}",
                                   f"semana {week_now} de 16", "flat"), unsafe_allow_html=True)
         st.write("")
-        d_info = DAYS[day_now]
+        d_info = DAYS[DAY_ORDER[pend_wk]]
         st.markdown(f'<div class="session-card"><div class="eyebrow" style="color:var(--red);text-transform:uppercase;letter-spacing:.12em;font-size:.72rem;font-weight:800">'
                     f'{icon("flame",13)} PRÓXIMA SESIÓN</div>'
-                    f'<div class="day">Workout {DAY_ORDER.index(day_now)+1} · {d_info["focus"]}</div>'
-                    f'<div class="meta">{d_info["lift"]} · AMRAP {d_info["time"]} min · mínimo {MIN[week_now]} rondas</div></div>',
+                    f'<div class="day">Semana {pend_week} · Workout {pend_wk+1}</div>'
+                    f'<div class="meta">{d_info["focus"]} · {d_info["lift"]} · AMRAP {d_info["time"]} min '
+                    f'· mínimo {MIN[pend_week]} rondas</div></div>',
                     unsafe_allow_html=True)
     else:
         empty_state("target", "Empieza configurando tu Semana 0 para activar tu panel de progreso.")
@@ -393,31 +402,30 @@ if page == "home":
 elif page == "training":
     st.markdown('<div class="hero"><div class="eyebrow">WORKOUT</div><h1>Entrena.</h1><p>Fuerza primero. AMRAP después. Técnica siempre.</p></div>',unsafe_allow_html=True)
     st.write("")
-    # La sesión activa vive en session_state para poder avanzar sola al guardar.
-    if "sel_week" not in st.session_state:
-        st.session_state.sel_week = week_now
-    if "sel_wk" not in st.session_state:
-        st.session_state.sel_wk = DAY_ORDER.index(day_now)
-    # El avance se aplica AQUÍ, antes de crear los selectores: Streamlit no permite
-    # modificar la clave de un widget una vez instanciado.
-    _next = st.session_state.pop("next_sel", None)
-    if _next:
-        st.session_state.sel_week, st.session_state.sel_wk = _next
-
     _aviso = st.session_state.pop("aviso_guardado", None)
     if _aviso:
         st.success(_aviso, icon="✅")
 
-    a,b=st.columns(2)
-    with a:
-        week=st.selectbox("Semana",range(1,17),key="sel_week",
-                          format_func=lambda x:f"Semana {x} · {'descarga' if x==16 else 'entrenamiento'}")
-    with b:
-        wk_idx=st.selectbox("Workout",range(len(DAY_ORDER)),key="sel_wk",
-                            format_func=lambda i:f"Workout {i+1} · {DAYS[DAY_ORDER[i]]['focus']}")
-    day=DAY_ORDER[wk_idx]
-    d=DAYS[day]
-    st.markdown(f'<span class="pill pill-red">{d["focus"]}</span> <span class="pill">16 semanas</span>',unsafe_allow_html=True)
+    # Sin selectores: siempre toca la siguiente sesión pendiente, en orden.
+    # No se puede saltar adelante; el avance sale de lo que hay registrado.
+    total_sesiones = 16 * len(DAY_ORDER)
+    completadas = len(logs_all)
+    programa_completo = completadas >= total_sesiones
+
+    if programa_completo:
+        st.success("🏁 Has completado las 16 semanas. Para retocar una sesión, ve a Progreso → "
+                   "*Corregir o borrar una sesión guardada*.")
+        st.stop()
+
+    week, wk_idx = pend_week, pend_wk
+    day = DAY_ORDER[wk_idx]
+    d = DAYS[day]
+
+    st.markdown(f'<span class="pill pill-red">Semana {week} · Workout {wk_idx+1}</span> '
+                f'<span class="pill">{d["focus"]}</span> '
+                f'<span class="pill">{completadas} de {total_sesiones} hechas</span>',
+                unsafe_allow_html=True)
+    st.caption("Las sesiones se hacen en orden: al guardar esta, pasarás automáticamente a la siguiente.")
     st.write("")
     st.markdown(stat_card("dumbbell","red","Ejercicio", d["lift"]), unsafe_allow_html=True)
     c2,c3=st.columns(2)
@@ -428,7 +436,15 @@ elif page == "training":
     x1,x2,x3=st.columns(3)
     with x1: lw=st.number_input("Peso (kg)",0.0,300.0,0.0,1.25)
     with x2: sr=st.text_input("Series / reps",placeholder="8 / 8 / 7")
-    with x3: rir=st.selectbox("RIR final",[0,1,2,3,4],index=2)
+    with x3: rir=st.selectbox("RIR final",[0,1,2,3,4],index=2,
+        help=("**RIR** = *Reps In Reserve* (repeticiones en reserva). Cuántas repeticiones más "
+              "**podrías haber hecho** al acabar la última serie, antes de llegar al fallo.\n\n"
+              "- **0** · al fallo, no podías ni una más\n"
+              "- **1** · te quedaba una\n"
+              "- **2** · te quedaban dos (lo habitual en este programa)\n"
+              "- **3–4** · serie cómoda, lejos del fallo\n\n"
+              "Si te sobran 4, el peso se te ha quedado corto. Si acabas a 0 todas las series, "
+              "probablemente acumules más fatiga de la que puedes recuperar."))
     st.markdown(f'### {icon("flame",20)} AMRAP · {d["time"]} min', unsafe_allow_html=True)
     for i,ex in enumerate(d["amrap"][week],1):
         st.markdown(f'<div class="exercise"><span class="n">{i:02d}</span><span class="t">{ex}</span></div>',unsafe_allow_html=True)
@@ -441,19 +457,20 @@ elif page == "training":
         st.info("Semana 16 · descarga + tests")
     notes=st.text_area("Notas",placeholder="Energía · técnica · molestias · sensaciones…")
     if st.button("Guardar entrenamiento",type="primary",use_container_width=True):
+        # Red de seguridad: si se reenvía el formulario (p. ej. refrescando la página
+        # justo después de guardar) no se duplica la sesión.
+        _actuales = training_get()
+        if len(_actuales) and len(_actuales[(_actuales["week"]==week) & (_actuales["day"]==day)]):
+            st.warning("Esa sesión ya estaba registrada. Recarga la página para ver la siguiente.")
+            st.stop()
         if DB_OK:
             try:
                 supabase.table("training_logs").insert({"log_date":str(date.today()),"week":week,"day":day,"lift":d["lift"],"weight":lw or None,"sets_reps":sr,"rir":rir,"rounds":rounds,"extra_reps":extra,"notes":notes}).execute()
             except Exception as ex:
                 st.error(f"No se pudo guardar: {ex}"); st.stop()
-            # Avanzar solo al siguiente workout: 1→2→3→4, y de 4 a la semana siguiente.
-            if wk_idx < len(DAY_ORDER)-1:
-                n_week, n_wk = week, wk_idx+1
-            elif week < 16:
-                n_week, n_wk = week+1, 0
-            else:
-                n_week, n_wk = week, wk_idx      # fin del programa: no avanza
-            st.session_state.next_sel = (n_week, n_wk)
+            # La siguiente se calcula releyendo lo registrado, no con un +1: si
+            # había un hueco anterior, el mensaje debe decir la sesión real.
+            n_week, n_wk = next_pending(training_get())
             st.session_state.aviso_guardado = (
                 f"Workout {wk_idx+1} de la semana {week} guardado. "
                 f"Siguiente: Workout {n_wk+1} de la semana {n_week}."
@@ -468,7 +485,7 @@ elif page == "training":
 elif page == "progress":
     st.markdown('<div class="hero"><div class="eyebrow">YOUR DATA</div><h1>Progreso.</h1><p>Semana 0 como referencia. Cada dato cuenta.</p></div>',unsafe_allow_html=True)
     st.write("")
-    body=body_get(); logs=training_get()
+    body=body_get(); logs=logs_all
     if not profile:
         empty_state("target", "Primero configura tu Semana 0 en el menú lateral.")
     else:
@@ -706,6 +723,6 @@ else:
     week=st.select_slider("Selecciona semana",options=list(range(1,17)),value=week_now)
     for i,day in enumerate(DAY_ORDER,1):
         d=DAYS[day]
-        with st.expander(f"Workout {i}  ·  {d['lift']}  ·  {d['sets'][week]}", expanded=(day==day_now and week==week_now)):
+        with st.expander(f"Workout {i}  ·  {d['lift']}  ·  {d['sets'][week]}", expanded=(i-1==pend_wk and week==pend_week)):
             st.caption(f"AMRAP {d['time']} min · {'test / descarga' if week==16 else f'mínimo {MIN[week]} rondas'}")
             for ex in d["amrap"][week]: st.write("• "+ex)
