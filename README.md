@@ -1,44 +1,14 @@
-# Proyecto Spider-Man 41 — v3 Supabase
+# Spider-Man 41 v4 — Premium UI + Supabase
 
-Versión preparada para Supabase y Streamlit.
-
-## 1. Crear tablas
-Abre Supabase → SQL Editor y ejecuta `supabase_schema.sql`.
-
-Si ya tienes tablas `profile`, `body_logs` o `training_logs`, NO las borres.
-Comprueba primero sus columnas y adapta el esquema si fuera necesario.
-
-## 2. Streamlit Secrets
-En Streamlit Community Cloud → App → Settings → Secrets:
-
+## Deploy
+1. Ejecuta `supabase_schema.sql` en Supabase SQL Editor.
+2. En Streamlit Secrets:
 SUPABASE_URL = "https://TU-PROYECTO.supabase.co"
 SUPABASE_KEY = "TU_PUBLISHABLE_KEY"
+3. Sube `app.py` y `requirements.txt` a GitHub.
+4. Despliega `app.py` en Streamlit Community Cloud.
 
-Usa la publishable/anon key, NO la service_role key.
+La app guarda la Semana 0, entrenamientos, peso/cintura y muestra gráficos de progreso.
+Esta versión usa Supabase para persistencia.
 
-## 3. Dependencias
-`requirements.txt` ya incluye:
-- streamlit
-- pandas
-- supabase
-
-## 4. Ejecutar
-streamlit run app.py
-
-## 5. Funciones
-- Semana 0 / situación inicial.
-- Plan exacto de 16 semanas.
-- Registro de entrenamientos.
-- Registro de peso y cintura.
-- Datos persistentes en Supabase.
-- Dashboard de peso, cintura, cargas y AMRAP.
-- Comparación con la situación inicial.
-
-## Seguridad
-Esta versión está pensada para uso personal y las tablas usan políticas RLS abiertas a `anon`.
-NO publiques esta configuración como una app multiusuario.
-Para una app multiusuario hay que añadir autenticación y RLS por usuario.
-
-## Nota sobre Supabase
-Si ya tienes tablas creadas, el script usa `CREATE TABLE IF NOT EXISTS`, pero eso no modifica columnas existentes.
-Si tus tablas existentes no tienen las columnas necesarias, hay que hacer una migración.
+IMPORTANTE: las políticas RLS incluidas son para una app personal. Para una app pública/multiusuario hay que añadir autenticación y RLS por usuario.
