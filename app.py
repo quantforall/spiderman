@@ -156,7 +156,9 @@ html, body, [class*="css"]{ font-family:'Inter',-apple-system,BlinkMacSystemFont
 .status-pill, .goalbar, .goalbar .row, .hero .eyebrow, .hero p, .card, .card .eyebrow, .session-card .meta,
 .empty, .danger-card, .danger-card p{ font-family:'Inter',-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
 .stApp{ background:var(--bg); }
-.block-container{ max-width:1240px; padding:2rem 2rem 4rem; }
+/* No se toca padding-top: Streamlit lo calcula para dejar libre su barra fija,
+   que en Streamlit Cloud es más alta (Share, GitHub, editar) que en local. */
+.block-container{ max-width:1240px; padding-left:2rem; padding-right:2rem; padding-bottom:4rem; }
 h1,h2,h3{ font-family:'Barlow Condensed',Inter,sans-serif; letter-spacing:-.01em; }
 ::selection{ background:var(--red-soft); }
 
@@ -195,7 +197,7 @@ h1,h2,h3{ font-family:'Barlow Condensed',Inter,sans-serif; letter-spacing:-.01em
 
 /* ---------- móvil: recuperar ancho útil ---------- */
 @media (max-width:640px){
-  .block-container{ padding:1rem .75rem 3rem; }
+  .block-container{ padding-left:.75rem; padding-right:.75rem; padding-bottom:3rem; }
   .hero{ padding:22px 18px; border-radius:var(--r-lg); }
   .hero h1{ font-size:2rem; }
   .hero p{ font-size:.96rem; }
