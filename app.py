@@ -369,8 +369,8 @@ if page == "home":
             # Progreso real = sesiones registradas, no tiempo transcurrido.
             hechas = len(logs)
             total_sesiones = 16 * len(DAYS)
-            sub = f"{hechas} de {total_sesiones} sesiones" if hechas else "sin sesiones aún"
-            st.markdown(stat_card("calendar","amber","Semana", f"{week_now} / 16", sub, "flat"), unsafe_allow_html=True)
+            st.markdown(stat_card("check-circle","amber","Sesiones", f"{hechas} / {total_sesiones}",
+                                  f"semana {week_now} de 16", "flat"), unsafe_allow_html=True)
         st.write("")
         d_info = DAYS[day_now]
         st.markdown(f'<div class="session-card"><div class="eyebrow" style="color:var(--red);text-transform:uppercase;letter-spacing:.12em;font-size:.72rem;font-weight:800">'
@@ -506,6 +506,79 @@ elif page == "progress":
                                        "weight":"Peso (kg)","sets_reps":"Series/reps","rir":"RIR",
                                        "rounds":"Rondas","extra_reps":"Reps extra","notes":"Notas"}))
             st.dataframe(hist,use_container_width=True,hide_index=True)
+
+            # ---------- editar / borrar una sesión ya guardada ----------
+            with st.expander("✏️ Corregir o borrar una sesión guardada"):
+                ed = logs.sort_values(["week","log_date"],ascending=[False,False])
+                def _etiqueta(r):
+                    return f'Semana {int(r["week"])} · {r["day"]} · {r["lift"]} ({r["log_date"]})'
+                opciones = {int(r["id"]): _etiqueta(r) for _, r in ed.iterrows()}
+                sid = st.selectbox("Sesión", list(opciones), format_func=lambda k: opciones[k], key="ed_sel")
+                fila = logs[logs["id"] == sid].iloc[0]
+
+                with st.form("editar_sesion"):
+                    e1,e2,e3 = st.columns(3)
+                    with e1:
+                        e_week = st.number_input("Semana",1,16,int(fila["week"]),1)
+                    with e2:
+                        e_day = st.selectbox("Día",DAY_ORDER,
+                                             index=DAY_ORDER.index(fila["day"]) if fila["day"] in DAY_ORDER else 0)
+                    with e3:
+                        e_fecha = st.date_input("Fecha", date.fromisoformat(str(fila["log_date"])[:10]))
+                    g1,g2,g3 = st.columns(3)
+                    with g1:
+                        e_peso = st.number_input("Peso (kg)",0.0,300.0,
+                                                 float(fila["weight"]) if pd.notna(fila["weight"]) else 0.0,1.25)
+                    with g2:
+                        e_sr = st.text_input("Series / reps", fila["sets_reps"] if pd.notna(fila["sets_reps"]) else "")
+                    with g3:
+                        e_rir = st.selectbox("RIR final",[0,1,2,3,4],
+                                             index=int(fila["rir"]) if pd.notna(fila["rir"]) and 0<=int(fila["rir"])<=4 else 2)
+                    h1,h2 = st.columns(2)
+                    with h1:
+                        e_rondas = st.number_input("Rondas completas",0,100,
+                                                   int(fila["rounds"]) if pd.notna(fila["rounds"]) else 0,1)
+                    with h2:
+                        e_extra = st.number_input("Repeticiones extra",0,100,
+                                                  int(fila["extra_reps"]) if pd.notna(fila["extra_reps"]) else 0,1)
+                    e_notas = st.text_area("Notas", fila["notes"] if pd.notna(fila["notes"]) else "")
+
+                    b1,b2 = st.columns(2)
+                    guardar = b1.form_submit_button("Guardar cambios",type="primary",use_container_width=True)
+                    borrar  = b2.form_submit_button("Borrar esta sesión",use_container_width=True)
+
+                if guardar:
+                    if not DB_OK:
+                        st.error("Supabase no está conectado.")
+                    else:
+                        try:
+                            supabase.table("training_logs").update({
+                                "log_date":str(e_fecha),"week":e_week,"day":e_day,
+                                "lift":DAYS[e_day]["lift"],"weight":e_peso or None,"sets_reps":e_sr,
+                                "rir":e_rir,"rounds":e_rondas,"extra_reps":e_extra,"notes":e_notas,
+                            }).eq("id",sid).execute()
+                        except Exception as ex:
+                            st.error(f"No se pudo guardar: {ex}"); st.stop()
+                        nuevo = training_get()
+                        fila_n = nuevo[nuevo["id"]==sid]
+                        if len(fila_n) and int(fila_n.iloc[0]["rounds"] or 0)==e_rondas and str(fila_n.iloc[0]["day"])==e_day:
+                            st.toast("Sesión actualizada", icon="✅"); st.rerun()
+                        else:
+                            st.error("**No se ha guardado el cambio.** Falta la política UPDATE en Supabase: "
+                                     "vuelve a ejecutar `supabase_schema.sql` en el SQL Editor.")
+                if borrar:
+                    if not DB_OK:
+                        st.error("Supabase no está conectado.")
+                    else:
+                        try:
+                            supabase.table("training_logs").delete().eq("id",sid).execute()
+                        except Exception as ex:
+                            st.error(f"No se pudo borrar: {ex}"); st.stop()
+                        if len(training_get()[training_get()["id"]==sid])==0:
+                            st.toast("Sesión borrada", icon="🗑️"); st.rerun()
+                        else:
+                            st.error("**No se ha borrado.** Falta la política DELETE en Supabase: "
+                                     "vuelve a ejecutar `supabase_schema.sql` en el SQL Editor.")
         else:
             empty_state("activity", "Todavía no hay entrenamientos registrados.")
 
@@ -551,12 +624,27 @@ elif page == "week0":
         if st.button(f'{"🗑️ "}Borrar todos mis datos', type="primary", use_container_width=True,
                      disabled=not reset_ready, key="reset_confirm_btn"):
             if DB_OK:
-                supabase.table("training_logs").delete().gte("id", 0).execute()
-                supabase.table("body_logs").delete().gte("id", 0).execute()
-                supabase.table("profile").delete().eq("id", 1).execute()
-                st.toast("Todos los datos han sido borrados", icon="🗑️")
-                st.success("Progreso reiniciado. Configura tu nueva Semana 0 cuando quieras.")
-                st.rerun()
+                try:
+                    supabase.table("training_logs").delete().gte("id", 0).execute()
+                    supabase.table("body_logs").delete().gte("id", 0).execute()
+                    supabase.table("profile").delete().eq("id", 1).execute()
+                except Exception as e:
+                    st.error(f"No se pudo borrar: {e}")
+                    st.stop()
+                # Con RLS activo y sin política DELETE, Supabase responde OK pero no
+                # borra nada. Comprobamos de verdad antes de decir que se ha borrado.
+                quedan = len(training_get()) + len(body_get()) + (1 if profile_get() else 0)
+                if quedan == 0:
+                    st.toast("Todos los datos han sido borrados", icon="🗑️")
+                    st.success("Progreso reiniciado. Configura tu nueva Semana 0 cuando quieras.")
+                    st.rerun()
+                else:
+                    st.error(
+                        f"**No se ha borrado nada** ({quedan} registros siguen ahí). "
+                        "Supabase acepta la petición pero la bloquea: falta la política DELETE. "
+                        "Ejecuta `supabase_schema.sql` de nuevo en el SQL Editor de Supabase "
+                        "para crear las políticas de borrado."
+                    )
             else:
                 st.error("Supabase no está conectado.")
         if not reset_ready:
