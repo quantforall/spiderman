@@ -79,6 +79,12 @@ MIN = {1:8,2:8,3:9,4:9,5:9,6:9,7:10,8:10,9:10,10:10,11:11,12:11,13:10,14:11,15:1
 # Weekday index (Mon=0 … Sun=6) → training day, in program order
 WEEKDAY_MAP = {0:"Lunes", 1:"Martes", 3:"Jueves", 5:"Sábado"}
 DAY_ORDER = ["Lunes","Martes","Jueves","Sábado"]
+# En la interfaz las sesiones se llaman "Workout 1..4"; en la base de datos se
+# siguen guardando por nombre de día (columna `day`), así que no hay migración.
+WORKOUT_LABELS = [f"Workout {i+1}" for i in range(len(DAY_ORDER))]
+
+def workout_label(day):
+    return WORKOUT_LABELS[DAY_ORDER.index(day)] if day in DAY_ORDER else str(day)
 
 def current_week(start_date_str):
     """Semana del programa (1-16) calculada a partir de la fecha de Semana 0."""
@@ -374,7 +380,8 @@ if page == "home":
         st.write("")
         d_info = DAYS[day_now]
         st.markdown(f'<div class="session-card"><div class="eyebrow" style="color:var(--red);text-transform:uppercase;letter-spacing:.12em;font-size:.72rem;font-weight:800">'
-                    f'{icon("flame",13)} PRÓXIMA SESIÓN</div><div class="day">{day_now} · {d_info["focus"]}</div>'
+                    f'{icon("flame",13)} PRÓXIMA SESIÓN</div>'
+                    f'<div class="day">Workout {DAY_ORDER.index(day_now)+1} · {d_info["focus"]}</div>'
                     f'<div class="meta">{d_info["lift"]} · AMRAP {d_info["time"]} min · mínimo {MIN[week_now]} rondas</div></div>',
                     unsafe_allow_html=True)
     else:
@@ -386,9 +393,29 @@ if page == "home":
 elif page == "training":
     st.markdown('<div class="hero"><div class="eyebrow">WORKOUT</div><h1>Entrena.</h1><p>Fuerza primero. AMRAP después. Técnica siempre.</p></div>',unsafe_allow_html=True)
     st.write("")
+    # La sesión activa vive en session_state para poder avanzar sola al guardar.
+    if "sel_week" not in st.session_state:
+        st.session_state.sel_week = week_now
+    if "sel_wk" not in st.session_state:
+        st.session_state.sel_wk = DAY_ORDER.index(day_now)
+    # El avance se aplica AQUÍ, antes de crear los selectores: Streamlit no permite
+    # modificar la clave de un widget una vez instanciado.
+    _next = st.session_state.pop("next_sel", None)
+    if _next:
+        st.session_state.sel_week, st.session_state.sel_wk = _next
+
+    _aviso = st.session_state.pop("aviso_guardado", None)
+    if _aviso:
+        st.success(_aviso, icon="✅")
+
     a,b=st.columns(2)
-    with a: week=st.selectbox("Semana",range(1,17),index=week_now-1,format_func=lambda x:f"Semana {x} · {'descarga' if x==16 else 'entrenamiento'}")
-    with b: day=st.selectbox("Día",list(DAYS.keys()),index=DAY_ORDER.index(day_now))
+    with a:
+        week=st.selectbox("Semana",range(1,17),key="sel_week",
+                          format_func=lambda x:f"Semana {x} · {'descarga' if x==16 else 'entrenamiento'}")
+    with b:
+        wk_idx=st.selectbox("Workout",range(len(DAY_ORDER)),key="sel_wk",
+                            format_func=lambda i:f"Workout {i+1} · {DAYS[DAY_ORDER[i]]['focus']}")
+    day=DAY_ORDER[wk_idx]
     d=DAYS[day]
     st.markdown(f'<span class="pill pill-red">{d["focus"]}</span> <span class="pill">16 semanas</span>',unsafe_allow_html=True)
     st.write("")
@@ -415,9 +442,24 @@ elif page == "training":
     notes=st.text_area("Notas",placeholder="Energía · técnica · molestias · sensaciones…")
     if st.button("Guardar entrenamiento",type="primary",use_container_width=True):
         if DB_OK:
-            supabase.table("training_logs").insert({"log_date":str(date.today()),"week":week,"day":day,"lift":d["lift"],"weight":lw or None,"sets_reps":sr,"rir":rir,"rounds":rounds,"extra_reps":extra,"notes":notes}).execute()
+            try:
+                supabase.table("training_logs").insert({"log_date":str(date.today()),"week":week,"day":day,"lift":d["lift"],"weight":lw or None,"sets_reps":sr,"rir":rir,"rounds":rounds,"extra_reps":extra,"notes":notes}).execute()
+            except Exception as ex:
+                st.error(f"No se pudo guardar: {ex}"); st.stop()
+            # Avanzar solo al siguiente workout: 1→2→3→4, y de 4 a la semana siguiente.
+            if wk_idx < len(DAY_ORDER)-1:
+                n_week, n_wk = week, wk_idx+1
+            elif week < 16:
+                n_week, n_wk = week+1, 0
+            else:
+                n_week, n_wk = week, wk_idx      # fin del programa: no avanza
+            st.session_state.next_sel = (n_week, n_wk)
+            st.session_state.aviso_guardado = (
+                f"Workout {wk_idx+1} de la semana {week} guardado. "
+                f"Siguiente: Workout {n_wk+1} de la semana {n_week}."
+            )
             st.toast("Entrenamiento guardado", icon="✅")
-            st.success("Guardado. Tu progreso queda sincronizado.")
+            st.rerun()
         else: st.error("Supabase no está conectado.")
 
 # ============================================================
@@ -482,15 +524,16 @@ elif page == "progress":
             # Barras AGRUPADAS por día: apilarlas sumaría rondas de sesiones distintas,
             # y esa suma no significa nada.
             q=logs.groupby(["week","day"],as_index=False)["rounds"].max()
+            q["workout"]=q["day"].map(workout_label)
             amrap=(alt.Chart(q).mark_bar(cornerRadiusTopLeft=3,cornerRadiusTopRight=3)
                    .encode(
                        x=alt.X("week:O", title="Semana", axis=alt.Axis(labelAngle=0)),
-                       xOffset=alt.XOffset("day:N", sort=DAY_ORDER),
+                       xOffset=alt.XOffset("workout:N", sort=WORKOUT_LABELS),
                        y=alt.Y("rounds:Q", title="Rondas"),
-                       color=alt.Color("day:N", title="Día", sort=DAY_ORDER,
-                                       scale=alt.Scale(domain=DAY_ORDER,
+                       color=alt.Color("workout:N", title="Sesión", sort=WORKOUT_LABELS,
+                                       scale=alt.Scale(domain=WORKOUT_LABELS,
                                                        range=["#E4362F","#3E68F0","#22C55E","#F59E0B"])),
-                       tooltip=[alt.Tooltip("week:O",title="Semana"),alt.Tooltip("day:N",title="Día"),
+                       tooltip=[alt.Tooltip("week:O",title="Semana"),alt.Tooltip("workout:N",title="Sesión"),
                                 alt.Tooltip("rounds:Q",title="Rondas")])
                    .properties(height=280)
                    .configure_axis(labelColor="#93A0B4",titleColor="#5B6B84",
@@ -500,9 +543,10 @@ elif page == "progress":
                    .configure_view(strokeWidth=0))
             st.altair_chart(amrap,use_container_width=True)
             st.markdown(f'### {icon("activity",20)} Historial', unsafe_allow_html=True)
-            hist=(logs.sort_values(["week","log_date"],ascending=[False,False])
-                      .drop(columns=[c for c in ("id",) if c in logs.columns])
-                      .rename(columns={"log_date":"Fecha","week":"Semana","day":"Día","lift":"Ejercicio",
+            hist=logs.sort_values(["week","log_date"],ascending=[False,False]).copy()
+            hist["day"]=hist["day"].map(workout_label)
+            hist=(hist.drop(columns=[c for c in ("id",) if c in hist.columns])
+                      .rename(columns={"log_date":"Fecha","week":"Semana","day":"Sesión","lift":"Ejercicio",
                                        "weight":"Peso (kg)","sets_reps":"Series/reps","rir":"RIR",
                                        "rounds":"Rondas","extra_reps":"Reps extra","notes":"Notas"}))
             st.dataframe(hist,use_container_width=True,hide_index=True)
@@ -511,7 +555,8 @@ elif page == "progress":
             with st.expander("✏️ Corregir o borrar una sesión guardada"):
                 ed = logs.sort_values(["week","log_date"],ascending=[False,False])
                 def _etiqueta(r):
-                    return f'Semana {int(r["week"])} · {r["day"]} · {r["lift"]} ({r["log_date"]})'
+                    wnum = DAY_ORDER.index(r["day"])+1 if r["day"] in DAY_ORDER else "?"
+                    return f'Semana {int(r["week"])} · Workout {wnum} · {r["lift"]} ({r["log_date"]})'
                 opciones = {int(r["id"]): _etiqueta(r) for _, r in ed.iterrows()}
                 sid = st.selectbox("Sesión", list(opciones), format_func=lambda k: opciones[k], key="ed_sel")
                 fila = logs[logs["id"] == sid].iloc[0]
@@ -521,8 +566,10 @@ elif page == "progress":
                     with e1:
                         e_week = st.number_input("Semana",1,16,int(fila["week"]),1)
                     with e2:
-                        e_day = st.selectbox("Día",DAY_ORDER,
-                                             index=DAY_ORDER.index(fila["day"]) if fila["day"] in DAY_ORDER else 0)
+                        e_idx = st.selectbox("Workout",range(len(DAY_ORDER)),
+                                             index=DAY_ORDER.index(fila["day"]) if fila["day"] in DAY_ORDER else 0,
+                                             format_func=lambda i:f"Workout {i+1} · {DAYS[DAY_ORDER[i]]['focus']}")
+                        e_day = DAY_ORDER[e_idx]
                     with e3:
                         e_fecha = st.date_input("Fecha", date.fromisoformat(str(fila["log_date"])[:10]))
                     g1,g2,g3 = st.columns(3)
@@ -657,7 +704,8 @@ else:
     st.markdown('<div class="hero"><div class="eyebrow">THE PROGRAM</div><h1>16 semanas.</h1><p>Cuatro bloques. Cuatro sesiones. Una progresión.</p></div>',unsafe_allow_html=True)
     st.write("")
     week=st.select_slider("Selecciona semana",options=list(range(1,17)),value=week_now)
-    for day,d in DAYS.items():
-        with st.expander(f"{day}  ·  {d['lift']}  ·  {d['sets'][week]}", expanded=(day==day_now and week==week_now)):
+    for i,day in enumerate(DAY_ORDER,1):
+        d=DAYS[day]
+        with st.expander(f"Workout {i}  ·  {d['lift']}  ·  {d['sets'][week]}", expanded=(day==day_now and week==week_now)):
             st.caption(f"AMRAP {d['time']} min · {'test / descarga' if week==16 else f'mínimo {MIN[week]} rondas'}")
             for ex in d["amrap"][week]: st.write("• "+ex)
