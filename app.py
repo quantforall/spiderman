@@ -176,8 +176,19 @@ h1,h2,h3{ font-family:'Barlow Condensed',Inter,sans-serif; letter-spacing:-.01em
   mask-image:radial-gradient(70% 90% at 100% 0%, black, transparent); }
 .hero .eyebrow{ position:relative; display:inline-flex; align-items:center; gap:7px; text-transform:uppercase; letter-spacing:.14em; font-size:.72rem; font-weight:800; color:var(--red); }
 .hero .eyebrow::before{ content:""; width:16px; height:2px; background:var(--red); border-radius:2px; }
-.hero h1{ position:relative; font-size:2.75rem; font-weight:800; line-height:1.02; margin:10px 0 0; color:var(--ink); }
+.hero h1{ position:relative; font-size:2.75rem; font-weight:800; line-height:1.02; margin:10px 0 0; color:var(--ink);
+  overflow-wrap:normal; word-break:normal; hyphens:none; }
 .hero p{ position:relative; margin:10px 0 0; color:var(--ink-muted); font-size:1.02rem; max-width:520px; }
+
+/* ---------- móvil: recuperar ancho útil ---------- */
+@media (max-width:640px){
+  .block-container{ padding:1rem .75rem 3rem; }
+  .hero{ padding:22px 18px; border-radius:var(--r-lg); }
+  .hero h1{ font-size:2rem; }
+  .hero p{ font-size:.96rem; }
+  .stat{ padding:16px 16px; }
+  .card, .session-card{ padding:18px 16px; }
+}
 
 /* ---------- cards & stats ---------- */
 .card{ border:1px solid var(--border); border-radius:var(--r-lg); padding:22px 24px; background:var(--surface); }
@@ -448,10 +459,19 @@ elif page == "week0":
         a,b,c=st.columns(3)
         with a: sw=st.number_input("Peso (kg)",40.0,200.0,float(profile["start_weight"]) if profile else 87.0,.1); wa=st.number_input("Cintura (cm)",40.0,180.0,float(profile["start_waist"]) if profile and profile.get("start_waist") else 90.0,.1)
         with b: pu=st.number_input("Dominadas máximas",0,50,int(profile["start_pullups"]) if profile else 8,1); fl=st.number_input("Flexiones máximas",0,100,int(profile["start_pushups"]) if profile else 15,1)
-        with c: sq=st.number_input("Sentadilla (kg)",0.0,300.0,float(profile["start_squat"]) if profile and profile.get("start_squat") else 0.0,1.25); rdl=st.number_input("RDL (kg)",0.0,300.0,float(profile["start_rdl"]) if profile and profile.get("start_rdl") else 0.0,1.25)
+        with c: sq=st.number_input("Sentadilla (kg)",0.0,300.0,float(profile["start_squat"]) if profile and profile.get("start_squat") else 0.0,1.25); rdl=st.number_input("Peso muerto rumano (kg)",0.0,300.0,float(profile["start_rdl"]) if profile and profile.get("start_rdl") else 0.0,1.25)
         a,b=st.columns(2)
         with a: curl=st.number_input("Curl Z (kg)",0.0,150.0,float(profile["start_curl"]) if profile and profile.get("start_curl") else 0.0,1.25); tri=st.number_input("Tríceps Z (kg)",0.0,150.0,float(profile["start_triceps"]) if profile and profile.get("start_triceps") else 0.0,1.25)
-        with b: cindy=st.number_input("Cindy · rondas",0.0,50.0,float(profile["start_cindy"]) if profile and profile.get("start_cindy") else 0.0,1.0); sd=st.date_input("Fecha",date.fromisoformat(profile["start_date"]) if profile and profile.get("start_date") else date.today())
+        with b:
+            cindy=st.number_input("Cindy · rondas",0.0,50.0,float(profile["start_cindy"]) if profile and profile.get("start_cindy") else 0.0,1.0,
+                help=("**Cindy** es un test de referencia clásico: AMRAP de **20 minutos** repitiendo esta ronda "
+                      "tantas veces como puedas.\n\n"
+                      "- 5 dominadas\n"
+                      "- 10 flexiones\n"
+                      "- 15 sentadillas\n\n"
+                      "Anota las **rondas completas** que consigas. Sirve como marca inicial para comparar tu "
+                      "resistencia al final de las 16 semanas."))
+            sd=st.date_input("Fecha",date.fromisoformat(profile["start_date"]) if profile and profile.get("start_date") else date.today())
         if st.form_submit_button("Guardar Semana 0",type="primary",use_container_width=True):
             if DB_OK:
                 supabase.table("profile").upsert({"id":1,"start_date":str(sd),"start_weight":sw,"start_waist":wa,"start_pullups":pu,"start_pushups":fl,"start_squat":sq or None,"start_rdl":rdl or None,"start_curl":curl or None,"start_triceps":tri or None,"start_cindy":cindy or None}).execute()
