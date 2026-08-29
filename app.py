@@ -397,16 +397,18 @@ def anillo_semanas(pasos_df, obj_sem):
         dpath = f"M {x0:.2f} {y0:.2f} A {R} {R} 0 {largo} 1 {x1:.2f} {y1:.2f}"
         total = totales.get(i, 0)
 
-        GRUESO, FINO = 15, 6            # cerradas y en curso vs. futuras
+        GRUESO, FINO = 15, 6            # semanas ya vividas vs. futuras
         if i > sem_actual:
             color, grosor, estado = "rgba(241,245,249,.12)", FINO, "aún no"
-        elif i == sem_actual:
-            if total >= obj_sem:
-                color, grosor, estado = "#22C55E", GRUESO, "objetivo cumplido"
-            else:
-                color, grosor, estado = "#F59E0B", GRUESO, "en curso"
+        elif total == 0:
+            # Sin pasos registrados: gris oscuro, no rojo. No es lo mismo
+            # quedarse corto que no haber anotado nada.
+            color, grosor, estado = "#37414F", GRUESO, "sin pasos registrados"
         elif total >= obj_sem:
-            color, grosor, estado = "#22C55E", GRUESO, "objetivo cumplido"; cumplidas += 1
+            color, grosor, estado = "#22C55E", GRUESO, "objetivo cumplido"
+            if i < sem_actual: cumplidas += 1
+        elif i == sem_actual:
+            color, grosor, estado = "#F59E0B", GRUESO, "en curso"
         else:
             color, grosor, estado = "#E4362F", GRUESO, "objetivo no alcanzado"; falladas += 1
 
@@ -415,8 +417,11 @@ def anillo_semanas(pasos_df, obj_sem):
             f'<title>Semana {i} · {miles(total)} pasos · {estado}</title></path>'
         )
 
-    cerradas = cumplidas + falladas
-    resumen = f"{cumplidas} de {cerradas} semanas cumplidas" if cerradas else "aún no hay semanas cerradas"
+    cerradas = max(0, sem_actual - 1)
+    sin_datos = cerradas - cumplidas - falladas
+    resumen = (f"{cumplidas} de {cerradas} semanas cumplidas"
+               + (f", {sin_datos} sin registrar" if sin_datos > 0 else "")) if cerradas \
+              else "aún no hay semanas cerradas"
     return (
         f'<div class="anillo">'
         f'<svg viewBox="0 0 240 240" role="img" '
@@ -764,7 +769,8 @@ elif page == "steps":
         _cerradas = list(range(1, _sa))
         _ok = sum(1 for w in _cerradas if _tot.get(w, 0) >= obj_sem)
         st.caption(f"Una muesca por semana natural del año. Verde = objetivo cumplido · "
-                   f"rojo = no alcanzado · ámbar = semana en curso. "
+                   f"rojo = no alcanzado · gris oscuro = sin pasos registrados · "
+                   f"ámbar = semana en curso. "
                    f"Llevas **{_ok} de {len(_cerradas)}** semanas cerradas cumpliendo el objetivo.")
         # Alternativa en texto: en móvil no hay tooltip al pasar el dedo.
         with st.expander("Ver semana a semana"):
@@ -773,10 +779,12 @@ elif page == "steps":
                 if _w > _sa and _w not in _tot:
                     continue                      # semanas futuras sin datos: no listar
                 _t = _tot.get(_w, 0)
-                _est = ("En curso" if _w == _sa and _t < obj_sem
-                        else "Cumplida" if _t >= obj_sem else "No alcanzada")
+                _est = ("Sin registrar" if _t == 0
+                        else "Cumplida" if _t >= obj_sem
+                        else "En curso" if _w == _sa else "No alcanzada")
                 _filas.append({"Semana": _w, "Pasos": miles(_t), "Estado": _est,
-                               "Diferencia": ("+" + miles(_t - obj_sem)) if _t >= obj_sem
+                               "Diferencia": "—" if _t == 0
+                                             else ("+" + miles(_t - obj_sem)) if _t >= obj_sem
                                              else "−" + miles(obj_sem - _t)})
             st.dataframe(pd.DataFrame(_filas[::-1]), use_container_width=True, hide_index=True)
     else:
