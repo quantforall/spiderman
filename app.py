@@ -2,7 +2,8 @@
 import streamlit as st
 import pandas as pd
 import altair as alt
-from datetime import date
+import math
+from datetime import date, timedelta
 from supabase import create_client, Client
 
 st.set_page_config(
@@ -39,6 +40,11 @@ def body_get():
 def training_get():
     if not DB_OK: return pd.DataFrame()
     r = supabase.table("training_logs").select("*").order("log_date").execute()
+    return pd.DataFrame(r.data)
+
+def steps_get():
+    if not DB_OK: return pd.DataFrame()
+    r = supabase.table("step_logs").select("*").order("log_date").execute()
     return pd.DataFrame(r.data)
 
 # ============================================================
@@ -85,6 +91,15 @@ WORKOUT_LABELS = [f"Workout {i+1}" for i in range(len(DAY_ORDER))]
 def workout_label(day):
     return WORKOUT_LABELS[DAY_ORDER.index(day)] if day in DAY_ORDER else str(day)
 
+# ---------- pasos ----------
+PASOS_DIA_DEF, PASOS_SEM_DEF = 10000, 70000
+DIAS_ES = ["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"]
+
+def inicio_semana(d=None):
+    """Lunes de la semana natural que contiene d (por defecto, hoy)."""
+    d = d or date.today()
+    return d - timedelta(days=d.weekday())
+
 def next_pending(logs):
     """Siguiente sesión pendiente siguiendo el orden del programa:
     semana 1 → Workout 1,2,3,4; semana 2 → Workout 1,2,3,4; etc.
@@ -117,6 +132,8 @@ _ICON_PATHS = {
     "chevron-right": '<polyline points="9 6 15 12 9 18"/>',
     "web": '<circle cx="12" cy="12" r="10"/><path d="M12 2v20M2 12h20M4.5 4.5l15 15M19.5 4.5l-15 15"/><path d="M7 4.2A9.9 9.9 0 0 0 4.2 7M20 7a9.9 9.9 0 0 0-2.8-2.8M4.2 17a9.9 9.9 0 0 0 2.8 2.8M17 20a9.9 9.9 0 0 0 2.8-2.8"/>',
     "alert-triangle": '<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
+    "footprints": '<path d="M5 4.5a2 2 0 0 1 4 0c0 1.5-.4 2.2-.4 3.5 0 1 .4 1.6.4 2.6a2 2 0 0 1-4 0c0-1 .4-1.6.4-2.6C5.4 6.7 5 6 5 4.5Z"/><path d="M5.2 14.5h3.6a1 1 0 0 1 1 1.1l-.2 2a1 1 0 0 1-1 .9H5.4a1 1 0 0 1-1-.9l-.2-2a1 1 0 0 1 1-1.1Z"/><path d="M15 8.5a2 2 0 0 1 4 0c0 1.5-.4 2.2-.4 3.5 0 1 .4 1.6.4 2.6a2 2 0 0 1-4 0c0-1 .4-1.6.4-2.6 0-1.3-.4-2-.4-3.5Z"/><path d="M15.2 18.5h3.6a1 1 0 0 1 1 1.1l-.1 1a1 1 0 0 1-1 .9h-3.4a1 1 0 0 1-1-.9l-.1-1a1 1 0 0 1 1-1.1Z"/>',
+    "target-2": '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
     "trash": '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
 }
 
@@ -203,7 +220,11 @@ h1,h2,h3{ font-family:'Barlow Condensed',Inter,sans-serif; letter-spacing:-.01em
 [data-testid="stMarkdownContainer"]:has(> .stat),
 [data-testid="stMarkdownContainer"]:has(> .empty),
 [data-testid="stMarkdownContainer"]:has(> .session-card),
-[data-testid="stMarkdownContainer"]:has(> .card){ margin-bottom:0 !important; }
+[data-testid="stMarkdownContainer"]:has(> .card),
+[data-testid="stMarkdownContainer"]:has(> .goalbar),
+[data-testid="stMarkdownContainer"]:has(> .danger-card){ margin-bottom:0 !important; }
+/* la barra de objetivo pertenece a la tarjeta que tiene encima: pegada arriba, aire abajo */
+.goalbar{ margin-top:-8px; margin-bottom:8px; }
 
 /* ---------- cards & stats ---------- */
 .card{ border:1px solid var(--border); border-radius:var(--r-lg); padding:22px 24px; background:var(--surface); }
@@ -238,6 +259,19 @@ h1,h2,h3{ font-family:'Barlow Condensed',Inter,sans-serif; letter-spacing:-.01em
 .goalbar .track{ height:8px; border-radius:999px; background:var(--surface-2); overflow:hidden; }
 .goalbar .fill{ height:100%; border-radius:999px; background:linear-gradient(90deg,var(--red),var(--blue)); transition:width .4s ease; }
 .goalbar.done .fill{ background:linear-gradient(90deg,var(--green),#3fe08a); }
+
+/* ---------- anillo de semanas ---------- */
+.anillo{ border:1px solid var(--border); border-radius:var(--r-lg); background:var(--surface);
+  padding:14px 12px; display:flex; justify-content:center; }
+.anillo svg{ width:100%; max-width:440px; height:auto; display:block; }
+.anillo path{ transition:stroke-width .2s ease; cursor:default; }
+.anillo path:hover{ stroke-width:18; }
+.anillo .a-num{ fill:var(--ink); font-family:'Barlow Condensed',sans-serif; font-size:40px;
+  font-weight:800; text-anchor:middle; letter-spacing:-.01em; }
+.anillo .a-den{ fill:var(--ink-muted); font-size:13px; text-anchor:middle; font-family:'Inter',sans-serif; }
+.anillo .a-sem{ fill:var(--ink-faint); font-size:11px; text-anchor:middle; letter-spacing:.06em;
+  text-transform:uppercase; font-weight:700; font-family:'Inter',sans-serif; }
+
 
 /* ---------- streamlit widget polish ---------- */
 .stButton>button, .stFormSubmitButton>button{ border-radius:12px; font-weight:700; min-height:46px; border:1px solid transparent; }
@@ -301,20 +335,107 @@ def trend_chart(df, y, titulo, color="#E4362F", fmt=".1f", height=300):
                             domainColor="rgba(241,245,249,.16)", labelFontSize=12)
             .configure_view(strokeWidth=0))
 
-def goal_bar(current, target, unit="rondas", done_label="Objetivo conseguido"):
+def fecha_es(v):
+    """Fecha en formato europeo DD/MM/YYYY a partir de una fecha o texto ISO."""
+    try:
+        return pd.to_datetime(v).strftime("%d/%m/%Y")
+    except Exception:
+        return str(v)
+
+def miles(n):
+    """Separador de miles al estilo español: 10000 -> 10.000"""
+    return f"{int(n):,}".replace(",", ".")
+
+def goal_bar(current, target, unit="rondas", done_label="Objetivo conseguido",
+             titulo="Progreso semanal", fmt_miles=False):
     pct = 0 if target <= 0 else max(0, min(100, round(current/target*100)))
     done = current >= target and target > 0
-    label = done_label if done else f"{current}/{target} {unit}"
-    return (f'<div class="goalbar {"done" if done else ""}"><div class="row"><span>Progreso semanal</span>'
+    _c = miles(current) if fmt_miles else current
+    _t = miles(target) if fmt_miles else target
+    label = done_label if done else f"{_c}/{_t} {unit}"
+    return (f'<div class="goalbar {"done" if done else ""}"><div class="row"><span>{titulo}</span>'
             f'<b>{label}</b></div><div class="track"><div class="fill" style="width:{pct}%"></div></div></div>')
+
+def pasos_por_semana(pasos_df):
+    """Devuelve (año ISO, semana actual, nº de semanas del año, {semana: pasos})."""
+    hoy = date.today()
+    anio, sem_actual, _ = hoy.isocalendar()
+    n = date(anio, 12, 28).isocalendar()[1]          # 52 o 53 semanas ISO
+    totales = {}
+    if pasos_df is not None and len(pasos_df):
+        for _, r in pasos_df.iterrows():
+            d = r["log_date"]
+            if not isinstance(d, date):
+                d = pd.to_datetime(d).date()
+            iso = d.isocalendar()
+            if iso[0] == anio:
+                totales[iso[1]] = totales.get(iso[1], 0) + int(r["steps"])
+    return anio, sem_actual, n, totales
+
+def anillo_semanas(pasos_df, obj_sem):
+    """Anillo con las semanas naturales (ISO) del año: un hueco por semana,
+    verde si se alcanzó el objetivo semanal de pasos y rojo si no.
+    Todas las semanas cerradas tienen el MISMO grosor. Como el verde/rojo solo
+    no basta (daltonismo), cada hueco lleva tooltip y hay una tabla equivalente."""
+    anio, sem_actual, n, totales = pasos_por_semana(pasos_df)
+
+    CX = CY = 120.0
+    R = 96.0
+    paso = 360.0 / n
+    hueco = min(1.4, paso * 0.22)
+
+    def punto(ang, radio):
+        rad = math.radians(ang - 90.0)
+        return CX + radio*math.cos(rad), CY + radio*math.sin(rad)
+
+    segs, cumplidas, falladas = [], 0, 0
+    for i in range(1, n+1):
+        a0 = (i-1)*paso + hueco/2
+        a1 = i*paso - hueco/2
+        x0, y0 = punto(a0, R); x1, y1 = punto(a1, R)
+        largo = 1 if (a1-a0) > 180 else 0
+        dpath = f"M {x0:.2f} {y0:.2f} A {R} {R} 0 {largo} 1 {x1:.2f} {y1:.2f}"
+        total = totales.get(i, 0)
+
+        GRUESO, FINO = 15, 6            # cerradas y en curso vs. futuras
+        if i > sem_actual:
+            color, grosor, estado = "rgba(241,245,249,.12)", FINO, "aún no"
+        elif i == sem_actual:
+            if total >= obj_sem:
+                color, grosor, estado = "#22C55E", GRUESO, "objetivo cumplido"
+            else:
+                color, grosor, estado = "#F59E0B", GRUESO, "en curso"
+        elif total >= obj_sem:
+            color, grosor, estado = "#22C55E", GRUESO, "objetivo cumplido"; cumplidas += 1
+        else:
+            color, grosor, estado = "#E4362F", GRUESO, "objetivo no alcanzado"; falladas += 1
+
+        segs.append(
+            f'<path d="{dpath}" stroke="{color}" stroke-width="{grosor}" fill="none">'
+            f'<title>Semana {i} · {miles(total)} pasos · {estado}</title></path>'
+        )
+
+    cerradas = cumplidas + falladas
+    resumen = f"{cumplidas} de {cerradas} semanas cumplidas" if cerradas else "aún no hay semanas cerradas"
+    return (
+        f'<div class="anillo">'
+        f'<svg viewBox="0 0 240 240" role="img" '
+        f'aria-label="Semanas de {anio}: {resumen}. Semana actual, la {sem_actual}.">'
+        f'{"".join(segs)}'
+        f'<text x="120" y="116" class="a-num">{miles(obj_sem)}</text>'
+        f'<text x="120" y="136" class="a-den">objetivo semanal</text>'
+        f'<text x="120" y="156" class="a-sem">semana {sem_actual} · {anio}</text>'
+        f'</svg></div>'
+    )
 
 def empty_state(icon_name, text):
     st.markdown(f'<div class="empty">{icon(icon_name,26)}<div>{text}</div></div>', unsafe_allow_html=True)
 
 NAV = [
     ("home", "Inicio", ":material/home:"),
-    ("training", "Entrenamiento", ":material/fitness_center:"),
     ("progress", "Progreso", ":material/monitoring:"),
+    ("training", "Entrenamiento", ":material/fitness_center:"),
+    ("steps", "Pasos", ":material/directions_walk:"),
     ("week0", "Semana 0", ":material/flag:"),
     ("program", "Programa", ":material/menu_book:"),
 ]
@@ -433,9 +554,31 @@ elif page == "training":
     with c3: st.markdown(stat_card("flame","green","AMRAP", f'{d["time"]} min'), unsafe_allow_html=True)
     st.divider()
     st.markdown(f'### {icon("dumbbell",20)} Ejercicio principal', unsafe_allow_html=True)
+
+    # Última vez que hiciste ESTE mismo ejercicio, para no tener que recordarlo.
+    prev = pd.DataFrame()
+    if len(logs_all) and "lift" in logs_all.columns:
+        prev = logs_all[logs_all["lift"] == d["lift"]].copy()
+        if len(prev):
+            prev["week"] = pd.to_numeric(prev["week"], errors="coerce")
+            prev = prev.sort_values(["week", "log_date"])
+    peso_prev, sr_prev = 0.0, ""
+    if len(prev):
+        _w = pd.to_numeric(prev["weight"], errors="coerce").dropna()
+        if len(_w): peso_prev = float(_w.iloc[-1])
+        ult = prev.iloc[-1]
+        partes = []
+        if pd.notna(ult.get("weight")): partes.append(f"{float(ult['weight']):g} kg")
+        if ult.get("sets_reps"): partes.append(str(ult["sets_reps"])); sr_prev = str(ult["sets_reps"])
+        if pd.notna(ult.get("rir")): partes.append(f"RIR {int(ult['rir'])}")
+        if partes:
+            st.caption(f"↩︎ La última vez (semana {int(ult['week'])}): " + " · ".join(partes))
+
     x1,x2,x3=st.columns(3)
-    with x1: lw=st.number_input("Peso (kg)",0.0,300.0,0.0,1.25)
-    with x2: sr=st.text_input("Series / reps",placeholder="8 / 8 / 7")
+    with x1: lw=st.number_input("Peso (kg)",0.0,300.0,peso_prev,1.25,
+                                help="Viene con el peso de la última vez que hiciste este ejercicio. "
+                                     "Súbelo si la última serie te quedó con RIR 3–4.")
+    with x2: sr=st.text_input("Series / reps",placeholder=sr_prev or "8 / 8 / 7")
     with x3: rir=st.selectbox("RIR final",[0,1,2,3,4],index=2,
         help=("**RIR** = *Reps In Reserve* (repeticiones en reserva). Cuántas repeticiones más "
               "**podrías haber hecho** al acabar la última serie, antes de llegar al fallo.\n\n"
@@ -446,6 +589,13 @@ elif page == "training":
               "Si te sobran 4, el peso se te ha quedado corto. Si acabas a 0 todas las series, "
               "probablemente acumules más fatiga de la que puedes recuperar."))
     st.markdown(f'### {icon("flame",20)} AMRAP · {d["time"]} min', unsafe_allow_html=True)
+    if len(prev):
+        _r = pd.to_numeric(prev["rounds"], errors="coerce").dropna()
+        if len(_r):
+            _u = prev.iloc[-1]
+            _ex = int(_u["extra_reps"]) if pd.notna(_u.get("extra_reps")) else 0
+            st.caption(f"↩︎ Tu marca en esta sesión: {int(_r.iloc[-1])} rondas"
+                       + (f" + {_ex} reps" if _ex else ""))
     for i,ex in enumerate(d["amrap"][week],1):
         st.markdown(f'<div class="exercise"><span class="n">{i:02d}</span><span class="t">{ex}</span></div>',unsafe_allow_html=True)
     x1,x2=st.columns(2)
@@ -484,19 +634,194 @@ elif page == "training":
         else: st.error("Supabase no está conectado.")
 
 # ============================================================
+# STEPS
+# ============================================================
+elif page == "steps":
+    st.markdown('<div class="hero"><div class="eyebrow">DAILY STEPS</div><h1>Pasos.</h1>'
+                '<p>Lo que haces fuera del gimnasio también cuenta. Objetivo diario y semanal.</p></div>',
+                unsafe_allow_html=True)
+    st.write("")
+
+    pasos = steps_get()
+    if len(pasos):
+        pasos["log_date"] = pd.to_datetime(pasos["log_date"]).dt.date
+        pasos["steps"] = pd.to_numeric(pasos["steps"], errors="coerce").fillna(0).astype(int)
+
+    obj_dia = int(profile.get("steps_goal_daily") or PASOS_DIA_DEF) if profile else PASOS_DIA_DEF
+    obj_sem = int(profile.get("steps_goal_weekly") or PASOS_SEM_DEF) if profile else PASOS_SEM_DEF
+
+    hoy = date.today()
+    lunes = inicio_semana(hoy)
+    dias_semana = [lunes + timedelta(days=i) for i in range(7)]
+
+    hoy_pasos = 0
+    if len(pasos):
+        _h = pasos[pasos["log_date"] == hoy]["steps"]
+        if len(_h): hoy_pasos = int(_h.iloc[0])
+    sem = pasos[pasos["log_date"].isin(dias_semana)] if len(pasos) else pd.DataFrame()
+    sem_pasos = int(sem["steps"].sum()) if len(sem) else 0
+    dias_con_datos = len(sem) if len(sem) else 0
+
+    a, b = st.columns(2)
+    with a:
+        st.markdown(stat_card("footprints", "red", "Hoy", f"{hoy_pasos:,}".replace(",", "."),
+                              f"objetivo {obj_dia:,}".replace(",", "."), "flat"), unsafe_allow_html=True)
+        st.markdown(goal_bar(hoy_pasos, obj_dia, unit="pasos", done_label="Objetivo del día conseguido",
+                             titulo="Progreso de hoy", fmt_miles=True), unsafe_allow_html=True)
+    with b:
+        st.markdown(stat_card("calendar", "blue", "Esta semana", f"{sem_pasos:,}".replace(",", "."),
+                              f"objetivo {obj_sem:,}".replace(",", "."), "flat"), unsafe_allow_html=True)
+        st.markdown(goal_bar(sem_pasos, obj_sem, unit="pasos", done_label="Objetivo semanal conseguido",
+                             titulo="Progreso de la semana", fmt_miles=True), unsafe_allow_html=True)
+
+    # Ritmo necesario para llegar al objetivo semanal
+    if sem_pasos < obj_sem:
+        restantes_dias = max(1, 7 - hoy.weekday() - (1 if hoy_pasos >= obj_dia else 0))
+        faltan = obj_sem - sem_pasos
+        st.caption(f"Te faltan {faltan:,}".replace(",", ".") +
+                   f" pasos esta semana · unos {faltan // max(1, 7 - hoy.weekday()):,}".replace(",", ".") +
+                   " al día para llegar.")
+    else:
+        st.caption("Objetivo semanal cubierto. 👏")
+
+    st.divider()
+    st.markdown(f'### {icon("footprints",20)} Registrar pasos', unsafe_allow_html=True)
+    p1, p2 = st.columns([1, 1])
+    with p1:
+        f_pasos = st.date_input("Día", hoy, key="sp_date", format="DD/MM/YYYY")
+    with p2:
+        _ya = 0
+        if len(pasos):
+            _m = pasos[pasos["log_date"] == f_pasos]["steps"]
+            if len(_m): _ya = int(_m.iloc[0])
+        n_pasos = st.number_input("Pasos", 0, 100000, _ya, 500, key="sp_n",
+                                  help="Si ya habías guardado este día, se corrige el valor "
+                                       "en vez de duplicarlo.")
+    if st.button("Guardar pasos", type="primary", use_container_width=True):
+        if not DB_OK:
+            st.error("Supabase no está conectado.")
+        else:
+            existente = None
+            if len(pasos):
+                _m = pasos[pasos["log_date"] == f_pasos]
+                if len(_m): existente = int(_m.iloc[0]["id"])
+            try:
+                if existente is not None:
+                    supabase.table("step_logs").update({"steps": int(n_pasos)}).eq("id", existente).execute()
+                else:
+                    supabase.table("step_logs").insert({"log_date": str(f_pasos),
+                                                        "steps": int(n_pasos)}).execute()
+            except Exception as ex:
+                st.error(f"No se pudo guardar: {ex}"); st.stop()
+            _chk = steps_get()
+            if len(_chk):
+                _chk["log_date"] = pd.to_datetime(_chk["log_date"]).dt.date
+            _fila = _chk[_chk["log_date"] == f_pasos] if len(_chk) else pd.DataFrame()
+            if len(_fila) and int(_fila.iloc[0]["steps"]) == int(n_pasos):
+                st.toast("Pasos guardados", icon="✅")
+                st.rerun()
+            else:
+                st.error("**No se ha guardado.** Falta la tabla `step_logs` o sus políticas: "
+                         "ejecuta `supabase_schema.sql` en el SQL Editor de Supabase.")
+
+    st.markdown(f'### {icon("activity",20)} Esta semana', unsafe_allow_html=True)
+    semana_df = pd.DataFrame({
+        "dia": DIAS_ES,
+        "fecha": dias_semana,
+        "pasos": [int(pasos[pasos["log_date"] == dd]["steps"].iloc[0])
+                  if len(pasos) and len(pasos[pasos["log_date"] == dd]) else 0
+                  for dd in dias_semana],
+    })
+    semana_df["futuro"] = [dd > hoy for dd in dias_semana]
+    semana_df["pasos_txt"] = semana_df["pasos"].map(miles)
+    barras = (alt.Chart(semana_df[~semana_df["futuro"]])
+              .mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4, size=26)
+              .encode(
+                  x=alt.X("dia:N", title=None, sort=DIAS_ES, axis=alt.Axis(labelAngle=0)),
+                  y=alt.Y("pasos:Q", title="Pasos",
+                          axis=alt.Axis(format="~s")),   # 10k en vez de 10,000
+                  color=alt.condition(alt.datum.pasos >= obj_dia,
+                                      alt.value("#22C55E"), alt.value("#3E68F0")),
+                  tooltip=[alt.Tooltip("dia:N", title="Día"),
+                           alt.Tooltip("pasos_txt:N", title="Pasos")]))
+    meta = (alt.Chart(pd.DataFrame({"y": [obj_dia]}))
+            .mark_rule(color="#E4362F", strokeDash=[6, 4], strokeWidth=2)
+            .encode(y="y:Q"))
+    st.altair_chart((barras + meta).properties(height=260)
+                    .configure_axis(labelColor="#93A0B4", titleColor="#5B6B84",
+                                    gridColor="rgba(241,245,249,.09)",
+                                    domainColor="rgba(241,245,249,.16)", labelFontSize=12)
+                    .configure_view(strokeWidth=0),
+                    use_container_width=True)
+    st.caption(f"La línea roja es tu objetivo diario ({obj_dia:,}".replace(",", ".") +
+               " pasos). Verde = día cumplido.")
+
+    # --- Anillo del año: una muesca por semana natural (ISO) ---
+    st.markdown(f'### {icon("footprints",20)} Tu año en pasos', unsafe_allow_html=True)
+    if len(pasos):
+        st.markdown(anillo_semanas(pasos, obj_sem), unsafe_allow_html=True)
+        _a, _sa, _n, _tot = pasos_por_semana(pasos)
+        _cerradas = list(range(1, _sa))
+        _ok = sum(1 for w in _cerradas if _tot.get(w, 0) >= obj_sem)
+        st.caption(f"Una muesca por semana natural del año. Verde = objetivo cumplido · "
+                   f"rojo = no alcanzado · ámbar = semana en curso. "
+                   f"Llevas **{_ok} de {len(_cerradas)}** semanas cerradas cumpliendo el objetivo.")
+        # Alternativa en texto: en móvil no hay tooltip al pasar el dedo.
+        with st.expander("Ver semana a semana"):
+            _filas = []
+            for _w in range(1, _n+1):
+                if _w > _sa and _w not in _tot:
+                    continue                      # semanas futuras sin datos: no listar
+                _t = _tot.get(_w, 0)
+                _est = ("En curso" if _w == _sa and _t < obj_sem
+                        else "Cumplida" if _t >= obj_sem else "No alcanzada")
+                _filas.append({"Semana": _w, "Pasos": miles(_t), "Estado": _est,
+                               "Diferencia": ("+" + miles(_t - obj_sem)) if _t >= obj_sem
+                                             else "−" + miles(obj_sem - _t)})
+            st.dataframe(pd.DataFrame(_filas[::-1]), use_container_width=True, hide_index=True)
+    else:
+        empty_state("footprints", "Registra tus primeros pasos para ver el año completo.")
+
+    with st.expander("🎯 Cambiar objetivos"):
+        if not profile:
+            st.info("Los objetivos se guardan con tu perfil. Configura primero la Semana 0; "
+                    f"mientras tanto se usan {PASOS_DIA_DEF:,}".replace(",", ".") +
+                    f" al día y {PASOS_SEM_DEF:,}".replace(",", ".") + " a la semana.")
+        else:
+            g1, g2 = st.columns(2)
+            with g1: nd = st.number_input("Objetivo diario", 1000, 50000, obj_dia, 500, key="g_dia")
+            with g2: nw = st.number_input("Objetivo semanal", 5000, 350000, obj_sem, 1000, key="g_sem")
+            st.caption(f"Referencia: {nd:,}".replace(",", ".") + " al día × 7 = " +
+                       f"{nd*7:,}".replace(",", ".") + " a la semana.")
+            if st.button("Guardar objetivos", use_container_width=True):
+                try:
+                    supabase.table("profile").update({"steps_goal_daily": int(nd),
+                                                      "steps_goal_weekly": int(nw)}).eq("id", 1).execute()
+                except Exception as ex:
+                    st.error(f"No se pudo guardar: {ex}"); st.stop()
+                _p = profile_get()
+                if _p and int(_p.get("steps_goal_daily") or 0) == int(nd):
+                    st.toast("Objetivos actualizados", icon="✅")
+                    st.rerun()
+                else:
+                    st.error("**No se han guardado.** Faltan las columnas de objetivos: "
+                             "ejecuta `supabase_schema.sql` en el SQL Editor de Supabase.")
+
+# ============================================================
 # PROGRESS
 # ============================================================
 elif page == "progress":
     st.markdown('<div class="hero"><div class="eyebrow">YOUR DATA</div><h1>Progreso.</h1><p>Semana 0 como referencia. Cada dato cuenta.</p></div>',unsafe_allow_html=True)
     st.write("")
     body=body_get(); logs=logs_all
+
     if not profile:
         empty_state("target", "Primero configura tu Semana 0 en el menú lateral.")
     else:
         with st.expander(f"➕ Registrar peso / cintura de esta semana", expanded=(len(body)==0)):
             f1,f2,f3,f4=st.columns([1,1,1,1])
             with f1: log_week=st.selectbox("Semana",range(1,17),index=week_now-1,key="bw_week")
-            with f2: log_date=st.date_input("Fecha",date.today(),key="bw_date")
+            with f2: log_date=st.date_input("Fecha",date.today(),key="bw_date",format="DD/MM/YYYY")
             with f3: log_weight=st.number_input("Peso (kg)",30.0,250.0,float(profile["start_weight"]),0.1,key="bw_weight")
             with f4: log_waist=st.number_input("Cintura (cm)",40.0,180.0,value=None,step=0.1,key="bw_waist",
                                                placeholder="opcional", help="Déjalo vacío si hoy no te has medido.")
@@ -583,6 +908,7 @@ elif page == "progress":
             st.markdown(f'### {icon("activity",20)} Historial', unsafe_allow_html=True)
             hist=logs.sort_values(["week","log_date"],ascending=[False,False]).copy()
             hist["day"]=hist["day"].map(workout_label)
+            hist["log_date"]=hist["log_date"].map(fecha_es)
             hist=(hist.drop(columns=[c for c in ("id",) if c in hist.columns])
                       .rename(columns={"log_date":"Fecha","week":"Semana","day":"Sesión","lift":"Ejercicio",
                                        "weight":"Peso (kg)","sets_reps":"Series/reps","rir":"RIR",
@@ -594,7 +920,7 @@ elif page == "progress":
                 ed = logs.sort_values(["week","log_date"],ascending=[False,False])
                 def _etiqueta(r):
                     wnum = DAY_ORDER.index(r["day"])+1 if r["day"] in DAY_ORDER else "?"
-                    return f'Semana {int(r["week"])} · Workout {wnum} · {r["lift"]} ({r["log_date"]})'
+                    return f'Semana {int(r["week"])} · Workout {wnum} · {r["lift"]} ({fecha_es(r["log_date"])})'
                 opciones = {int(r["id"]): _etiqueta(r) for _, r in ed.iterrows()}
                 sid = st.selectbox("Sesión", list(opciones), format_func=lambda k: opciones[k], key="ed_sel")
                 fila = logs[logs["id"] == sid].iloc[0]
@@ -609,7 +935,7 @@ elif page == "progress":
                                              format_func=lambda i:f"Workout {i+1} · {DAYS[DAY_ORDER[i]]['focus']}")
                         e_day = DAY_ORDER[e_idx]
                     with e3:
-                        e_fecha = st.date_input("Fecha", date.fromisoformat(str(fila["log_date"])[:10]))
+                        e_fecha = st.date_input("Fecha", date.fromisoformat(str(fila["log_date"])[:10]), format="DD/MM/YYYY")
                     g1,g2,g3 = st.columns(3)
                     with g1:
                         e_peso = st.number_input("Peso (kg)",0.0,300.0,
@@ -695,7 +1021,7 @@ elif page == "week0":
                       "- 15 sentadillas\n\n"
                       "Anota las **rondas completas** que consigas. Sirve como marca inicial para comparar tu "
                       "resistencia al final de las 16 semanas."))
-            sd=st.date_input("Fecha",date.fromisoformat(profile["start_date"]) if profile and profile.get("start_date") else date.today())
+            sd=st.date_input("Fecha",date.fromisoformat(profile["start_date"]) if profile and profile.get("start_date") else date.today(),format="DD/MM/YYYY")
         if st.form_submit_button("Guardar Semana 0",type="primary",use_container_width=True):
             if DB_OK:
                 try:
@@ -726,13 +1052,14 @@ elif page == "week0":
                 try:
                     supabase.table("training_logs").delete().gte("id", 0).execute()
                     supabase.table("body_logs").delete().gte("id", 0).execute()
+                    supabase.table("step_logs").delete().gte("id", 0).execute()
                     supabase.table("profile").delete().eq("id", 1).execute()
                 except Exception as e:
                     st.error(f"No se pudo borrar: {e}")
                     st.stop()
                 # Con RLS activo y sin política DELETE, Supabase responde OK pero no
                 # borra nada. Comprobamos de verdad antes de decir que se ha borrado.
-                quedan = len(training_get()) + len(body_get()) + (1 if profile_get() else 0)
+                quedan = len(training_get()) + len(body_get()) + len(steps_get()) + (1 if profile_get() else 0)
                 if quedan == 0:
                     st.toast("Todos los datos han sido borrados", icon="🗑️")
                     st.success("Progreso reiniciado. Configura tu nueva Semana 0 cuando quieras.")
