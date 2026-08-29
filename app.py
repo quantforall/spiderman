@@ -10,7 +10,7 @@ st.set_page_config(
     page_title="Q4A Trainer",
     page_icon="🕷️",
     layout="wide",
-    initial_sidebar_state="auto",  # colapsado en móvil, abierto en escritorio
+    initial_sidebar_state="collapsed",   # la navegación va en una barra superior fija
 )
 
 # ============================================================
@@ -172,22 +172,52 @@ html, body, [class*="css"]{ font-family:'Inter',-apple-system,BlinkMacSystemFont
 h1,h2,h3{ font-family:'Barlow Condensed',Inter,sans-serif; letter-spacing:-.01em; }
 ::selection{ background:var(--red-soft); }
 
-/* ---------- sidebar ---------- */
-[data-testid="stSidebar"]{ background:var(--surface); border-right:1px solid var(--border); }
-.brand{ display:flex; align-items:center; gap:10px; padding:4px 2px 2px; }
-.brand .mark{ width:38px; height:38px; border-radius:11px; background:linear-gradient(150deg,var(--red),var(--red-strong)); display:flex; align-items:center; justify-content:center; color:#fff; flex:none; box-shadow:0 6px 16px rgba(228,54,47,.35); }
-.brand .name{ font-family:'Barlow Condensed',sans-serif; font-weight:800; font-size:1.32rem; line-height:1.05; color:var(--ink); }
-.brand .sub{ font-size:.74rem; color:var(--ink-muted); letter-spacing:.03em; }
-[data-testid="stSidebar"] .stButton{ width:100%; margin-bottom:6px; }
-[data-testid="stSidebar"] .stButton>button{ width:100%; justify-content:flex-start; gap:10px; padding:11px 14px;
-  border-radius:var(--r-md); font-size:.92rem; font-weight:600; min-height:44px; transition:transform .1s ease; }
-[data-testid="stSidebar"] .stButton>button:active{ transform:scale(.98); }
-[data-testid="stSidebar"] .stButton>button[kind="secondary"]{ background:var(--surface-2); border-color:var(--border); color:var(--ink); }
-[data-testid="stSidebar"] .stButton>button[kind="secondary"]:hover{ border-color:var(--border-strong); color:var(--ink); }
-[data-testid="stSidebar"] .stButton>button[kind="primary"]{ box-shadow:0 8px 18px -6px rgba(228,54,47,.55); }
-.side-block{ margin-top:2px; }
-.side-block .k{ font-size:.68rem; text-transform:uppercase; letter-spacing:.11em; color:var(--ink-faint); font-weight:700; }
-.side-block .v{ font-size:.86rem; color:var(--ink-muted); margin-top:2px; }
+/* ---------- sin panel lateral ni cabecera de Streamlit ----------
+   La navegación pasa a una barra propia, fija arriba. Ocultamos la cabecera
+   de Streamlit para que nuestra barra pueda quedarse pegada en top:0 sin
+   depender de la altura de esa cabecera (que cambia entre local y Cloud). */
+[data-testid="stSidebar"],
+[data-testid="stSidebarCollapsedControl"],
+[data-testid="stHeader"]{ display:none !important; }
+.block-container{ padding-top:0 !important; }
+
+.topbar{ display:flex; flex-direction:column; align-items:center; gap:10px;
+  padding:18px 0 12px; text-align:center; }
+.brand{ display:flex; align-items:center; justify-content:center; gap:13px; }
+.brand .mark{ width:46px; height:46px; border-radius:13px; background:linear-gradient(150deg,var(--red),var(--red-strong)); display:flex; align-items:center; justify-content:center; color:#fff; flex:none; box-shadow:0 6px 18px rgba(228,54,47,.4); }
+.brand .mark .icn{ width:26px; height:26px; }
+.brand .name{ font-family:'Barlow Condensed',sans-serif; font-weight:800; font-size:1.85rem; line-height:1.02; color:var(--ink); letter-spacing:-.01em; }
+.brand .sub{ font-size:.8rem; color:var(--ink-muted); letter-spacing:.03em; margin-top:2px; }
+.brand > div:last-child{ text-align:left; }
+
+/* La fila de columnas que sigue al marcador es la navegación: se queda fija.
+   Streamlit envuelve las columnas en stLayoutWrapper, así que la barra pegajosa
+   es ese envoltorio y dentro forzamos que las columnas no se apilen. */
+div[data-testid="stElementContainer"]:has(#navmark){ display:none; }
+div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutWrapper"]{ position:sticky; top:0; z-index:900; background:var(--bg);
+  border-bottom:1px solid var(--border); padding:8px 0 10px; margin-bottom:14px; }
+div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutWrapper"] [data-testid="stHorizontalBlock"]{ flex-wrap:nowrap !important; gap:4px !important; }
+div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutWrapper"] [data-testid="stColumn"]{ min-width:0 !important; flex:1 1 0 !important; width:auto !important; }
+div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutWrapper"] .stButton>button{ width:100%; min-height:54px; padding:6px 1px; gap:1px;
+  flex-direction:column; border-radius:var(--r-md); font-size:.62rem; font-weight:600;
+  line-height:1.15; transition:transform .1s ease; overflow:hidden; }
+div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutWrapper"] .stButton>button [data-testid="stMarkdownContainer"]{ max-width:100%; }
+div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutWrapper"] .stButton>button [data-testid="stMarkdownContainer"] p{ margin:0 !important;
+  font-size:.63rem !important; line-height:1.15 !important; font-weight:600;
+  max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutWrapper"] .stButton>button [data-testid="stIconMaterial"]{ font-size:19px !important; }
+div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutWrapper"] .stButton>button:active{ transform:scale(.96); }
+div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutWrapper"] .stButton>button[kind="secondary"]{ background:var(--surface-2); border-color:var(--border); color:var(--ink-muted); }
+div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutWrapper"] .stButton>button[kind="secondary"]:hover{ border-color:var(--border-strong); color:var(--ink); }
+div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutWrapper"] .stButton>button[kind="primary"]{ box-shadow:0 6px 14px -6px rgba(228,54,47,.6); }
+/* En pantallas anchas: icono y texto en línea, y letra legible. */
+@media (min-width:640px){
+  div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutWrapper"] [data-testid="stHorizontalBlock"]{ gap:8px !important; }
+  div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutWrapper"] .stButton>button{ flex-direction:row; min-height:46px; gap:8px; padding:8px 10px; }
+  div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutWrapper"] .stButton>button [data-testid="stMarkdownContainer"] p{ font-size:.9rem !important; }
+  div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutWrapper"] .stButton>button [data-testid="stIconMaterial"]{ font-size:20px !important; }
+}
+
 .status-pill{ display:inline-flex; align-items:center; gap:7px; padding:7px 12px; border-radius:999px; font-size:.78rem; font-weight:600; border:1px solid var(--border); }
 .status-pill .dot{ width:7px; height:7px; border-radius:50%; flex:none; }
 .status-ok{ background:var(--green-soft); color:#7CE2A0; } .status-ok .dot{ background:var(--green); box-shadow:0 0 0 3px var(--green-soft); }
@@ -439,9 +469,9 @@ def empty_state(icon_name, text):
 NAV = [
     ("home", "Inicio", ":material/home:"),
     ("progress", "Progreso", ":material/monitoring:"),
-    ("training", "Entrenamiento", ":material/fitness_center:"),
+    ("training", "Entreno", ":material/fitness_center:"),
     ("steps", "Pasos", ":material/directions_walk:"),
-    ("week0", "Semana 0", ":material/flag:"),
+    ("week0", "Sem. 0", ":material/flag:"),
     ("program", "Programa", ":material/menu_book:"),
 ]
 
@@ -455,26 +485,24 @@ week_now = pend_week
 if "nav_page" not in st.session_state:
     st.session_state.nav_page = "home"
 
-with st.sidebar:
-    st.markdown(f'<div class="brand"><div class="mark">{icon("web",20)}</div>'
-                f'<div><div class="name">Q4A Trainer</div><div class="sub">16-week transformation</div></div></div>',
-                unsafe_allow_html=True)
-    st.write("")
-    for key, label, micon in NAV:
+# ---------- barra superior fija (sustituye al panel lateral) ----------
+_estado = ('<span class="status-pill status-ok"><span class="dot"></span>Sincronizado</span>'
+           if DB_OK else
+           '<span class="status-pill status-bad"><span class="dot"></span>Sin conexión</span>')
+st.markdown(f'<div class="topbar"><div class="brand"><div class="mark">{icon("web",18)}</div>'
+            f'<div><div class="name">Q4A Trainer</div>'
+            f'<div class="sub">semana {week_now} de 16 · 16-week transformation</div></div></div>'
+            f'{_estado}</div>', unsafe_allow_html=True)
+
+st.markdown('<div id="navmark"></div>', unsafe_allow_html=True)
+_cols = st.columns(len(NAV))
+for _col, (key, label, micon) in zip(_cols, NAV):
+    with _col:
         if st.button(label, icon=micon, key=f"nav_{key}", use_container_width=True,
                      type="primary" if st.session_state.nav_page == key else "secondary"):
             st.session_state.nav_page = key
             st.rerun()
-    page = st.session_state.nav_page
-    st.divider()
-    st.markdown('<div class="side-block"><div class="k">Objetivo</div><div class="v">Perder grasa · ganar músculo</div></div>', unsafe_allow_html=True)
-    st.markdown('<div class="side-block" style="margin-top:12px"><div class="k">Prioridades</div><div class="v">Piernas · brazos · espalda</div></div>', unsafe_allow_html=True)
-    st.markdown('<div class="side-block" style="margin-top:12px"><div class="k">Semana actual</div><div class="v">Semana '+str(week_now)+' de 16</div></div>', unsafe_allow_html=True)
-    st.write("")
-    if DB_OK:
-        st.markdown('<span class="status-pill status-ok"><span class="dot"></span>Datos sincronizados</span>', unsafe_allow_html=True)
-    else:
-        st.markdown('<span class="status-pill status-bad"><span class="dot"></span>Supabase no conectado</span>', unsafe_allow_html=True)
+page = st.session_state.nav_page
 
 # ============================================================
 # HOME
