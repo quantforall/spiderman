@@ -1,21 +1,45 @@
-# Q4A Trainer v5 — Premium UI + Supabase
+# Q4A Trainer — programa de 16 semanas
 
-## Deploy
-1. Ejecuta `supabase_schema.sql` en Supabase SQL Editor.
-2. En Streamlit Secrets:
-SUPABASE_URL = "https://TU-PROYECTO.supabase.co"
-SUPABASE_KEY = "TU_PUBLISHABLE_KEY"
-3. Sube `app.py`, `requirements.txt` y la carpeta `.streamlit/` (tema de la app) a GitHub.
+App personal de entrenamiento: 4 sesiones por semana durante 16 semanas, registro de
+peso/cintura, pasos diarios y gráficos de progreso. Streamlit + Supabase.
+
+## Puesta en marcha
+
+1. Ejecuta `supabase_schema.sql` en el **SQL Editor de Supabase**. Es re-ejecutable
+   (usa `drop policy if exists` + `create policy`), así que puedes relanzarlo cuando quieras.
+2. En **Streamlit Secrets** añade:
+   ```
+   SUPABASE_URL = "https://TU-PROYECTO.supabase.co"
+   SUPABASE_KEY = "TU_PUBLISHABLE_KEY"
+   ```
+3. Sube a GitHub `app.py`, `requirements.txt`, `supabase_schema.sql` y la carpeta
+   `.streamlit/` (lleva el tema; empieza por punto y es fácil olvidarla).
 4. Despliega `app.py` en Streamlit Community Cloud.
 
-La app guarda la Semana 0, entrenamientos, peso/cintura y muestra gráficos de progreso.
-Esta versión usa Supabase para persistencia.
+## Pantallas
 
-## Novedades v5
-- Rediseño completo (tema oscuro con acentos rojo/azul, tipografía Barlow Condensed + Inter, iconos vectoriales).
-- La semana y el día de entrenamiento se calculan automáticamente a partir de la fecha de Semana 0.
-- Nuevo formulario en "Progreso" para registrar peso/cintura semana a semana (antes solo existía en Semana 0).
-- Barra de progreso visual para el mínimo de rondas AMRAP de cada semana.
-- Zona de peligro con doble confirmación (casilla + texto "BORRAR") para reiniciar todo el progreso.
+- **Inicio** — peso, cintura, dominadas, sesiones hechas y la próxima sesión.
+- **Progreso** — gráficos de peso, cintura, fuerza por ejercicio, AMRAP e historial;
+  permite corregir o borrar una sesión ya guardada.
+- **Entrenamiento** — muestra siempre la siguiente sesión pendiente, sin selectores:
+  las sesiones se hacen en orden y al guardar avanza sola. Precarga el peso de la
+  última vez que hiciste ese mismo ejercicio.
+- **Pasos** — registro diario con objetivo diario y semanal (semana natural, de lunes
+  a domingo) y un anillo con las semanas del año.
+- **Semana 0** — línea base del programa y zona de reinicio con doble confirmación.
+- **Programa** — las 16 semanas completas, semana a semana.
 
-IMPORTANTE: las políticas RLS incluidas son para una app personal. Para una app pública/multiusuario hay que añadir autenticación y RLS por usuario.
+## Notas
+
+- El avance del programa se mide por **sesiones registradas**, no por el calendario:
+  si dejas una semana sin entrenar no "pierdes" esa semana.
+- Todas las escrituras comprueban el resultado en la base de datos antes de dar la
+  operación por buena, para no mostrar falsos "guardado" si RLS las bloquea.
+- La navegación es una barra superior fija; se oculta la cabecera propia de Streamlit
+  para que quede anclada igual en local y en Streamlit Cloud.
+
+## Seguridad
+
+Las políticas RLS incluidas son para una **app personal de un solo usuario**: dan acceso
+completo al rol anónimo. Para una app pública o multiusuario hay que añadir autenticación
+y RLS por usuario.

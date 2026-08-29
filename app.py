@@ -206,9 +206,9 @@ div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutW
   line-height:1.15; transition:transform .1s ease; overflow:hidden; }
 div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutWrapper"] .stButton>button [data-testid="stMarkdownContainer"]{ max-width:100%; flex:0 1 auto; }
 div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutWrapper"] .stButton>button [data-testid="stMarkdownContainer"] p{ margin:0 !important;
-  font-size:.72rem !important; line-height:1.15 !important; font-weight:600;
+  font-size:clamp(.78rem, 3.9vw, 1.1rem) !important; line-height:1.15 !important; font-weight:600;
   max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutWrapper"] .stButton>button [data-testid="stIconMaterial"]{ font-size:17px !important; }
+div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutWrapper"] .stButton>button [data-testid="stIconMaterial"]{ font-size:19px !important; }
 /* Streamlit mete margin-right:8px al icono; se suma al gap y abre un hueco feo. */
 div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutWrapper"] .stButton>button > span{ margin:0 !important; }
 div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutWrapper"] .stButton>button:active{ transform:scale(.96); }
@@ -475,7 +475,7 @@ def empty_state(icon_name, text):
 NAV = [
     ("home", "Inicio", ":material/home:"),
     ("progress", "Progreso", ":material/monitoring:"),
-    ("training", "Entrenamiento", ":material/fitness_center:"),
+    ("training", "Training", ":material/fitness_center:"),
     ("steps", "Pasos", ":material/directions_walk:"),
     ("week0", "Semana 0", ":material/flag:"),
     ("program", "Programa", ":material/menu_book:"),
