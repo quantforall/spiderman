@@ -85,13 +85,6 @@ WORKOUT_LABELS = [f"Workout {i+1}" for i in range(len(DAY_ORDER))]
 def workout_label(day):
     return WORKOUT_LABELS[DAY_ORDER.index(day)] if day in DAY_ORDER else str(day)
 
-def current_week(start_date_str):
-    """Semana del programa (1-16) calculada a partir de la fecha de Semana 0."""
-    if not start_date_str: return 1
-    delta = (date.today() - date.fromisoformat(start_date_str)).days
-    if delta < 0: return 1
-    return min(16, delta // 7 + 1)
-
 def next_pending(logs):
     """Siguiente sesión pendiente siguiendo el orden del programa:
     semana 1 → Workout 1,2,3,4; semana 2 → Workout 1,2,3,4; etc.
@@ -207,7 +200,10 @@ h1,h2,h3{ font-family:'Barlow Condensed',Inter,sans-serif; letter-spacing:-.01em
 }
 /* Streamlit pone margin-bottom:-1rem en stMarkdownContainer (pensado para párrafos).
    En nuestras tarjetas HTML ese margen negativo se come la separación y las pega. */
-[data-testid="stMarkdownContainer"]:has(> .stat){ margin-bottom:0 !important; }
+[data-testid="stMarkdownContainer"]:has(> .stat),
+[data-testid="stMarkdownContainer"]:has(> .empty),
+[data-testid="stMarkdownContainer"]:has(> .session-card),
+[data-testid="stMarkdownContainer"]:has(> .card){ margin-bottom:0 !important; }
 
 /* ---------- cards & stats ---------- */
 .card{ border:1px solid var(--border); border-radius:var(--r-lg); padding:22px 24px; background:var(--surface); }
@@ -288,11 +284,12 @@ def trend_chart(df, y, titulo, color="#E4362F", fmt=".1f", height=300):
     lo que aplana por completo cambios pequeños (ej. 87 -> 84.9 kg)."""
     lo, hi = float(df[y].min()), float(df[y].max())
     pad = max((hi - lo) * 0.25, 0.5)
+    bajo = max(0.0, lo - pad)   # peso, cintura y kg nunca son negativos
     base = alt.Chart(df).encode(
         x=alt.X("week:Q", title="Semana",
                 axis=alt.Axis(tickMinStep=1, format="d", grid=False)),
         y=alt.Y(f"{y}:Q", title=titulo,
-                scale=alt.Scale(domain=[lo - pad, hi + pad], nice=False)),
+                scale=alt.Scale(domain=[bajo, hi + pad], nice=False)),
         tooltip=[alt.Tooltip("week:Q", title="Semana", format="d"),
                  alt.Tooltip(f"{y}:Q", title=titulo, format=fmt)],
     )
@@ -323,10 +320,11 @@ NAV = [
 ]
 
 profile = profile_get()
-week_now = current_week(profile["start_date"]) if profile else 1   # semana de calendario
-# Sesión pendiente según lo entrenado (no según el día de hoy).
+# Todo se mide por avance real del programa (sesiones registradas),
+# no por el calendario: si dejas una semana, no "pierdes" esa semana.
 logs_all = training_get()
 pend_week, pend_wk = next_pending(logs_all)
+week_now = pend_week
 
 if "nav_page" not in st.session_state:
     st.session_state.nav_page = "home"
@@ -472,11 +470,15 @@ elif page == "training":
                 st.error(f"No se pudo guardar: {ex}"); st.stop()
             # La siguiente se calcula releyendo lo registrado, no con un +1: si
             # había un hueco anterior, el mensaje debe decir la sesión real.
-            n_week, n_wk = next_pending(training_get())
-            st.session_state.aviso_guardado = (
-                f"Workout {wk_idx+1} de la semana {week} guardado. "
-                f"Siguiente: Workout {n_wk+1} de la semana {n_week}."
-            )
+            _tras = training_get()
+            hecho = f"Workout {wk_idx+1} de la semana {week} guardado."
+            if len(_tras) >= total_sesiones:
+                st.session_state.aviso_guardado = f"{hecho} 🏁 ¡Has terminado las 16 semanas!"
+            else:
+                n_week, n_wk = next_pending(_tras)
+                st.session_state.aviso_guardado = (
+                    f"{hecho} Siguiente: Workout {n_wk+1} de la semana {n_week}."
+                )
             st.toast("Entrenamiento guardado", icon="✅")
             st.rerun()
         else: st.error("Supabase no está conectado.")
@@ -500,9 +502,17 @@ elif page == "progress":
                                                placeholder="opcional", help="Déjalo vacío si hoy no te has medido.")
             if st.button("Guardar medición", type="primary", use_container_width=True):
                 if DB_OK:
-                    supabase.table("body_logs").insert({"log_date":str(log_date),"week":log_week,"weight":log_weight,"waist":log_waist}).execute()
-                    st.toast("Medición guardada", icon="✅")
-                    st.rerun()
+                    try:
+                        supabase.table("body_logs").insert({"log_date":str(log_date),"week":log_week,
+                                                            "weight":log_weight,"waist":log_waist}).execute()
+                    except Exception as ex:
+                        st.error(f"No se pudo guardar: {ex}"); st.stop()
+                    if len(body_get()) > len(body):
+                        st.toast("Medición guardada", icon="✅")
+                        st.rerun()
+                    else:
+                        st.error("**No se ha guardado.** Faltan permisos de escritura en Supabase: "
+                                 "vuelve a ejecutar `supabase_schema.sql` en el SQL Editor.")
                 else:
                     st.error("Supabase no está conectado.")
         if len(body):
@@ -524,12 +534,16 @@ elif page == "progress":
             weekly=body.groupby("week",as_index=False)["weight"].mean()
             chart=pd.concat([pd.DataFrame({"week":[0],"weight":[float(profile["start_weight"])]}),weekly],ignore_index=True).drop_duplicates("week",keep="last").sort_values("week")
             st.altair_chart(trend_chart(chart,"weight","Peso (kg)","#E4362F"),use_container_width=True)
-            if profile.get("start_waist"):
-                wd=body.dropna(subset=["waist"]).groupby("week",as_index=False)["waist"].last()
-                if len(wd):
-                    st.markdown(f'### {icon("ruler",20)} Cintura', unsafe_allow_html=True)
-                    chart2=pd.concat([pd.DataFrame({"week":[0],"waist":[float(profile["start_waist"])]}),wd],ignore_index=True).drop_duplicates("week",keep="last").sort_values("week")
-                    st.altair_chart(trend_chart(chart2,"waist","Cintura (cm)","#3E68F0"),use_container_width=True)
+            # El gráfico de cintura se muestra si hay mediciones, tenga o no
+            # línea base en Semana 0 (antes se ocultaba sin baseline).
+            wd=body.dropna(subset=["waist"]).groupby("week",as_index=False)["waist"].last()
+            if len(wd):
+                st.markdown(f'### {icon("ruler",20)} Cintura', unsafe_allow_html=True)
+                if profile.get("start_waist"):
+                    wd=pd.concat([pd.DataFrame({"week":[0],"waist":[float(profile["start_waist"])]}),wd],
+                                 ignore_index=True).drop_duplicates("week",keep="last")
+                st.altair_chart(trend_chart(wd.sort_values("week"),"waist","Cintura (cm)","#3E68F0"),
+                                use_container_width=True)
         else:
             empty_state("scale", "Todavía no hay mediciones corporales. Registra la primera arriba.")
         if len(logs):
@@ -540,19 +554,24 @@ elif page == "progress":
                     st.write(f"**{lift}**")
                     st.altair_chart(trend_chart(q,"weight","kg","#22C55E",height=180),use_container_width=True)
             st.markdown(f'### {icon("flame",20)} AMRAP', unsafe_allow_html=True)
-            # Barras AGRUPADAS por día: apilarlas sumaría rondas de sesiones distintas,
-            # y esa suma no significa nada.
+            # Una línea por sesión. Con barras agrupadas, a 16 semanas salían 64 barras
+            # finísimas ilegibles en móvil; la línea muestra la tendencia a cualquier escala.
             q=logs.groupby(["week","day"],as_index=False)["rounds"].max()
             q["workout"]=q["day"].map(workout_label)
-            amrap=(alt.Chart(q).mark_bar(cornerRadiusTopLeft=3,cornerRadiusTopRight=3)
+            _lo,_hi=float(q["rounds"].min()),float(q["rounds"].max())
+            _pad=max((_hi-_lo)*0.25,0.5)
+            amrap=(alt.Chart(q).mark_line(strokeWidth=2.5,
+                                          point=alt.OverlayMarkDef(size=45))
                    .encode(
-                       x=alt.X("week:O", title="Semana", axis=alt.Axis(labelAngle=0)),
-                       xOffset=alt.XOffset("workout:N", sort=WORKOUT_LABELS),
-                       y=alt.Y("rounds:Q", title="Rondas"),
+                       x=alt.X("week:Q", title="Semana",
+                               axis=alt.Axis(tickMinStep=1, format="d", grid=False)),
+                       y=alt.Y("rounds:Q", title="Rondas",
+                               scale=alt.Scale(domain=[max(0.0,_lo-_pad),_hi+_pad], nice=False)),
                        color=alt.Color("workout:N", title="Sesión", sort=WORKOUT_LABELS,
                                        scale=alt.Scale(domain=WORKOUT_LABELS,
                                                        range=["#E4362F","#3E68F0","#22C55E","#F59E0B"])),
-                       tooltip=[alt.Tooltip("week:O",title="Semana"),alt.Tooltip("workout:N",title="Sesión"),
+                       tooltip=[alt.Tooltip("week:Q",title="Semana",format="d"),
+                                alt.Tooltip("workout:N",title="Sesión"),
                                 alt.Tooltip("rounds:Q",title="Rondas")])
                    .properties(height=280)
                    .configure_axis(labelColor="#93A0B4",titleColor="#5B6B84",
@@ -656,7 +675,13 @@ elif page == "week0":
     st.write("")
     with st.form("baseline"):
         a,b,c=st.columns(3)
-        with a: sw=st.number_input("Peso (kg)",40.0,200.0,float(profile["start_weight"]) if profile else 87.0,.1); wa=st.number_input("Cintura (cm)",40.0,180.0,float(profile["start_waist"]) if profile and profile.get("start_waist") else 90.0,.1)
+        with a:
+            sw=st.number_input("Peso (kg)",40.0,200.0,float(profile["start_weight"]) if profile else 87.0,.1)
+            wa=st.number_input("Cintura (cm)",40.0,180.0,
+                               value=float(profile["start_waist"]) if profile and profile.get("start_waist") else None,
+                               step=.1, placeholder="opcional",
+                               help="Déjalo vacío si no te mides la cintura. Si pones un valor inventado, "
+                                    "las comparaciones de progreso saldrán mal.")
         with b: pu=st.number_input("Dominadas máximas",0,50,int(profile["start_pullups"]) if profile else 8,1); fl=st.number_input("Flexiones máximas",0,100,int(profile["start_pushups"]) if profile else 15,1)
         with c: sq=st.number_input("Sentadilla (kg)",0.0,300.0,float(profile["start_squat"]) if profile and profile.get("start_squat") else 0.0,1.25); rdl=st.number_input("Peso muerto rumano (kg)",0.0,300.0,float(profile["start_rdl"]) if profile and profile.get("start_rdl") else 0.0,1.25)
         a,b=st.columns(2)
@@ -673,9 +698,17 @@ elif page == "week0":
             sd=st.date_input("Fecha",date.fromisoformat(profile["start_date"]) if profile and profile.get("start_date") else date.today())
         if st.form_submit_button("Guardar Semana 0",type="primary",use_container_width=True):
             if DB_OK:
-                supabase.table("profile").upsert({"id":1,"start_date":str(sd),"start_weight":sw,"start_waist":wa,"start_pullups":pu,"start_pushups":fl,"start_squat":sq or None,"start_rdl":rdl or None,"start_curl":curl or None,"start_triceps":tri or None,"start_cindy":cindy or None}).execute()
-                st.toast("Semana 0 guardada", icon="✅")
-                st.success("Semana 0 guardada.")
+                try:
+                    supabase.table("profile").upsert({"id":1,"start_date":str(sd),"start_weight":sw,"start_waist":wa,"start_pullups":pu,"start_pushups":fl,"start_squat":sq or None,"start_rdl":rdl or None,"start_curl":curl or None,"start_triceps":tri or None,"start_cindy":cindy or None}).execute()
+                except Exception as ex:
+                    st.error(f"No se pudo guardar: {ex}"); st.stop()
+                guardado = profile_get()
+                if guardado and float(guardado["start_weight"]) == float(sw):
+                    st.toast("Semana 0 guardada", icon="✅")
+                    st.rerun()
+                else:
+                    st.error("**No se ha guardado.** Faltan permisos de escritura en Supabase: "
+                             "vuelve a ejecutar `supabase_schema.sql` en el SQL Editor.")
             else:
                 st.error("Supabase no está conectado.")
 
