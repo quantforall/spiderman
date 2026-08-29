@@ -195,25 +195,31 @@ h1,h2,h3{ font-family:'Barlow Condensed',Inter,sans-serif; letter-spacing:-.01em
    es ese envoltorio y dentro forzamos que las columnas no se apilen. */
 div[data-testid="stElementContainer"]:has(#navmark){ display:none; }
 div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutWrapper"]{ position:sticky; top:0; z-index:900; background:var(--bg);
-  border-bottom:1px solid var(--border); padding:8px 0 10px; margin-bottom:14px; }
-div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutWrapper"] [data-testid="stHorizontalBlock"]{ flex-wrap:nowrap !important; gap:4px !important; }
-div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutWrapper"] [data-testid="stColumn"]{ min-width:0 !important; flex:1 1 0 !important; width:auto !important; }
-div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutWrapper"] .stButton>button{ width:100%; min-height:54px; padding:6px 1px; gap:1px;
-  flex-direction:column; border-radius:var(--r-md); font-size:.62rem; font-weight:600;
+  border-bottom:1px solid var(--border); padding:6px 0 8px; margin-bottom:14px; }
+div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutWrapper"] [data-testid="stHorizontalBlock"]{ flex-wrap:wrap !important; gap:6px !important; }
+/* Móvil: 3 pestañas por fila (dos filas de tres). */
+div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutWrapper"] [data-testid="stColumn"]{ min-width:0 !important;
+  flex:0 0 calc((100% - 12px) / 3) !important; max-width:calc((100% - 12px) / 3) !important; }
+div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutWrapper"] .stButton>button{ width:100%; min-height:0; height:36px; padding:0 6px; gap:4px;
+  justify-content:center;
+  flex-direction:row; border-radius:var(--r-md); font-weight:600;
   line-height:1.15; transition:transform .1s ease; overflow:hidden; }
-div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutWrapper"] .stButton>button [data-testid="stMarkdownContainer"]{ max-width:100%; }
+div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutWrapper"] .stButton>button [data-testid="stMarkdownContainer"]{ max-width:100%; flex:0 1 auto; }
 div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutWrapper"] .stButton>button [data-testid="stMarkdownContainer"] p{ margin:0 !important;
-  font-size:.63rem !important; line-height:1.15 !important; font-weight:600;
+  font-size:.72rem !important; line-height:1.15 !important; font-weight:600;
   max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutWrapper"] .stButton>button [data-testid="stIconMaterial"]{ font-size:19px !important; }
+div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutWrapper"] .stButton>button [data-testid="stIconMaterial"]{ font-size:17px !important; }
+/* Streamlit mete margin-right:8px al icono; se suma al gap y abre un hueco feo. */
+div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutWrapper"] .stButton>button > span{ margin:0 !important; }
 div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutWrapper"] .stButton>button:active{ transform:scale(.96); }
 div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutWrapper"] .stButton>button[kind="secondary"]{ background:var(--surface-2); border-color:var(--border); color:var(--ink-muted); }
 div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutWrapper"] .stButton>button[kind="secondary"]:hover{ border-color:var(--border-strong); color:var(--ink); }
 div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutWrapper"] .stButton>button[kind="primary"]{ box-shadow:0 6px 14px -6px rgba(228,54,47,.6); }
-/* En pantallas anchas: icono y texto en línea, y letra legible. */
+/* Pantallas anchas: las seis en una sola fila y letra mayor. */
 @media (min-width:640px){
-  div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutWrapper"] [data-testid="stHorizontalBlock"]{ gap:8px !important; }
-  div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutWrapper"] .stButton>button{ flex-direction:row; min-height:46px; gap:8px; padding:8px 10px; }
+  div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutWrapper"] [data-testid="stHorizontalBlock"]{ flex-wrap:nowrap !important; gap:8px !important; }
+  div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutWrapper"] [data-testid="stColumn"]{ flex:1 1 0 !important; max-width:none !important; }
+  div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutWrapper"] .stButton>button{ height:40px; gap:6px; padding:0 12px; }
   div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutWrapper"] .stButton>button [data-testid="stMarkdownContainer"] p{ font-size:.9rem !important; }
   div[data-testid="stElementContainer"]:has(#navmark) + div[data-testid="stLayoutWrapper"] .stButton>button [data-testid="stIconMaterial"]{ font-size:20px !important; }
 }
@@ -469,9 +475,9 @@ def empty_state(icon_name, text):
 NAV = [
     ("home", "Inicio", ":material/home:"),
     ("progress", "Progreso", ":material/monitoring:"),
-    ("training", "Entreno", ":material/fitness_center:"),
+    ("training", "Entrenamiento", ":material/fitness_center:"),
     ("steps", "Pasos", ":material/directions_walk:"),
-    ("week0", "Sem. 0", ":material/flag:"),
+    ("week0", "Semana 0", ":material/flag:"),
     ("program", "Programa", ":material/menu_book:"),
 ]
 
